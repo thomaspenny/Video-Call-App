@@ -7,5 +7,5 @@ export default defineConfig({
     host: true
   },
   // For GitHub Pages deployment
-  base: process.env.NODE_ENV === 'production' ? '/Peer-to-peer-videochat/' : '/'
+  base: process.env.NODE_ENV === 'production' ? '/Video-Call-App/' : '/'
 })
