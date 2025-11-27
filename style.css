@@ -1,0 +1,290 @@
+:root {
+  font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+
+  color-scheme: light dark;
+  color: whitesmoke;
+  background-color: dimgray;
+
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+a {
+  font-weight: 500;
+  color: cornflowerblue;
+  text-decoration: inherit;
+}
+a:hover {
+  color: royalblue;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+h1 {
+  font-size: 3.2em;
+  line-height: 1.1;
+}
+
+h2 {
+  margin-top: 2rem;
+  margin-bottom: 0.5rem;
+  color: cornflowerblue;
+}
+
+h3 {
+  margin: 0.5rem 0;
+}
+
+.logo {
+  height: 6em;
+  padding: 1.5em;
+  will-change: filter;
+  transition: filter 300ms;
+}
+.logo:hover {
+  filter: drop-shadow(0 0 2em cornflowerblue);
+}
+.logo.vanilla:hover {
+  filter: drop-shadow(0 0 2em gold);
+}
+
+.card {
+  padding: 2em;
+}
+
+.read-the-docs {
+  color: darkgray;
+}
+
+button {
+  border-radius: 8px;
+  border: 1px solid transparent;
+  padding: 0.6em 1.2em;
+  font-size: 1em;
+  font-weight: 500;
+  font-family: inherit;
+  background-color: black;
+  cursor: pointer;
+  transition: border-color 0.25s;
+}
+button:hover {
+  border-color: cornflowerblue;
+}
+button:focus,
+button:focus-visible {
+  outline: 4px auto -webkit-focus-ring-color;
+}
+
+/* Video container - Teams/Zoom style */
+.video-container {
+  position: relative;
+  width: 100vw;
+  height: calc(100vh - 60px);
+  background-color: black;
+  overflow: hidden;
+}
+
+/* Remote video - fills entire screen */
+#remoteVideo {
+  width: calc(100% - 4rem);
+  height: calc(100% - 4rem);
+  margin: 2rem;
+  object-fit: contain;
+  background-color: black;
+  border-radius: 8px;
+}
+
+/* Local video wrapper */
+.local-video-wrapper {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  width: 240px;
+  height: 180px;
+  z-index: 10;
+}
+
+/* Local video - overlaid in corner */
+.local-video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  background-color: black;
+  border-radius: 8px;
+  border: 2px solid cornflowerblue;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+  cursor: default;
+  user-select: none;
+}
+
+/* Resize handle */
+.resize-handle {
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  width: 20px;
+  height: 20px;
+  background: cornflowerblue;
+  border-radius: 8px 0 8px 0;
+  cursor: nwse-resize;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  color: white;
+  user-select: none;
+  z-index: 11;
+}
+
+.resize-handle:hover {
+  background: royalblue;
+}
+
+/* Tooltip */
+.video-tooltip {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: rgba(0, 0, 0, 0.8);
+  color: white;
+  padding: 0.5rem 1rem;
+  border-radius: 4px;
+  font-size: 0.9rem;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s;
+  white-space: nowrap;
+  z-index: 12;
+}
+
+.local-video-wrapper:hover .video-tooltip {
+  opacity: 1;
+}
+
+.local-video-wrapper:hover .resize-handle:hover ~ .video-tooltip,
+.resize-handle:hover ~ .video-tooltip {
+  opacity: 0;
+}
+
+/* Controls bar at bottom */
+.controls {
+  position: relative;
+  width: 100%;
+  background: rgba(0, 0, 0, 0.95);
+  backdrop-filter: blur(10px);
+  padding: 0.75rem 2.5rem;
+  display: flex;
+  flex-direction: row;
+  gap: 1rem;
+  align-items: center;
+  justify-content: space-between;
+  border-top: 1px solid cornflowerblue;
+  z-index: 100;
+}
+
+.control-group {
+  display: flex;
+  gap: 2rem;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+
+/* Input styles */
+input {
+  padding: 0.6em 1em;
+  font-size: 1em;
+  border-radius: 8px;
+  border: 1px solid cornflowerblue;
+  background-color: black;
+  color: whitesmoke;
+  font-family: inherit;
+  min-width: 250px;
+}
+
+input:focus {
+  outline: 2px solid cornflowerblue;
+}
+
+/* Button disabled state */
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  border-color: gray;
+}
+
+button:disabled:hover {
+  border-color: gray;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+  .local-video-wrapper {
+    width: 120px;
+    height: 90px;
+    top: 10px;
+    right: 10px;
+  }
+  
+  .controls {
+    flex-direction: column;
+    padding: 1rem;
+    margin-bottom: 1rem;
+  }
+  
+  .control-group {
+    gap: 0.5rem;
+    flex-direction: column;
+    width: 100%;
+  }
+  
+  input {
+    min-width: 100%;
+  }
+  
+  button {
+    padding: 0.5em 1em;
+    font-size: 0.9em;
+    width: 100%;
+  }
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    color: darkslategray;
+    background-color: white;
+  }
+  a:hover {
+    color: royalblue;
+  }
+  button {
+    background-color: whitesmoke;
+  }
+  input {
+    background-color: whitesmoke;
+    color: darkslategray;
+  }
+  video {
+    border-color: royalblue;
+  }
+  h2 {
+    color: royalblue;
+  }
+}

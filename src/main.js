@@ -1,5 +1,5 @@
 // Import styles
-import './style.css';
+import '../style.css';
 
 // Import the functions you need from the SDKs you need
 import { initializeApp } from "firebase/app";
@@ -49,6 +49,74 @@ const answerButton = document.getElementById('answerButton');
 const remoteVideo = document.getElementById('remoteVideo');
 const hangupButton = document.getElementById('hangupButton');
 
+// Make local video draggable and resizable
+let isDragging = false;
+let isResizing = false;
+let currentX, currentY, initialX, initialY;
+let initialWidth, initialHeight;
+
+const videoWrapper = document.querySelector('.local-video-wrapper');
+const resizeHandle = document.querySelector('.resize-handle');
+
+videoWrapper.addEventListener('mousedown', startDrag);
+document.addEventListener('mousemove', drag);
+document.addEventListener('mouseup', stopDrag);
+
+function startDrag(e) {
+  if (e.target === resizeHandle || e.target.closest('.resize-handle')) {
+    isResizing = true;
+    const rect = videoWrapper.getBoundingClientRect();
+    initialWidth = rect.width;
+    initialHeight = rect.height;
+    webcamVideo.style.opacity = '0.3'; // Dim video during resize
+    e.preventDefault();
+  } else if (e.target === webcamVideo || e.target.closest('.local-video-wrapper')) {
+    isDragging = true;
+    const rect = videoWrapper.getBoundingClientRect();
+    initialX = e.clientX - rect.left;
+    initialY = e.clientY - rect.top;
+    e.preventDefault();
+  }
+}
+
+function drag(e) {
+  if (isDragging) {
+    e.preventDefault();
+    const container = document.querySelector('.video-container');
+    const containerRect = container.getBoundingClientRect();
+    
+    let newLeft = e.clientX - containerRect.left - initialX;
+    let newTop = e.clientY - containerRect.top - initialY;
+    
+    // Keep within bounds
+    const wrapperRect = videoWrapper.getBoundingClientRect();
+    newLeft = Math.max(0, Math.min(newLeft, containerRect.width - wrapperRect.width));
+    newTop = Math.max(0, Math.min(newTop, containerRect.height - wrapperRect.height));
+    
+    videoWrapper.style.left = newLeft + 'px';
+    videoWrapper.style.top = newTop + 'px';
+    videoWrapper.style.right = 'auto';
+  } else if (isResizing) {
+    e.preventDefault();
+    const rect = videoWrapper.getBoundingClientRect();
+    const newWidth = initialWidth + (e.clientX - rect.right);
+    const newHeight = initialHeight + (e.clientY - rect.bottom);
+    
+    if (newWidth > 80 && newWidth < 600) {
+      videoWrapper.style.width = newWidth + 'px';
+      videoWrapper.style.height = (newWidth * 0.75) + 'px'; // Maintain aspect ratio
+    }
+  }
+}
+
+function stopDrag() {
+  isDragging = false;
+  if (isResizing) {
+    webcamVideo.style.opacity = '1'; // Restore video
+  }
+  isResizing = false;
+}
+
 // 1. Setup media sources
 
 webcamButton.onclick = async () => {
@@ -82,16 +150,20 @@ webcamButton.onclick = async () => {
   callButton.disabled = false;
   answerButton.disabled = false;
   webcamButton.disabled = true;
+  hangupButton.disabled = false;
 };
 
 // 2. Create an offer
 callButton.onclick = async () => {
+  // Generate short call ID (10 characters)
+  const shortId = Math.random().toString(36).substring(2, 12);
+  
   // Reference Firestore collections for signaling
-  const callDoc = doc(collection(db, 'calls'));
+  const callDoc = doc(db, 'calls', shortId);
   const offerCandidates = collection(callDoc, 'offerCandidates');
   const answerCandidates = collection(callDoc, 'answerCandidates');
 
-  callInput.value = callDoc.id;
+  callInput.value = shortId;
 
   // Get candidates for caller, save to db
   pc.onicecandidate = (event) => {

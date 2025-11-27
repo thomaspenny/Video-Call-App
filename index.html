@@ -7,33 +7,24 @@
     <title>WebRTC Demo</title>
   </head>
   <body>
-    <h2>1. Start your Webcam</h2>
-    <div class="videos">
-      <span>
-        <h3>Local Stream</h3>
-        <video id="webcamVideo" autoplay playsinline></video>
-      </span>
-      <span>
-        <h3>Remote Stream</h3>
-        <video id="remoteVideo" autoplay playsinline></video>
-      </span>
-
-
+    <div class="video-container">
+      <video id="remoteVideo" autoplay playsinline></video>
+      <div class="local-video-wrapper">
+        <video id="webcamVideo" class="local-video" autoplay playsinline muted></video>
+        <div class="resize-handle">⋰</div>
+        <div class="video-tooltip">Click and drag to move</div>
+      </div>
     </div>
 
-    <button id="webcamButton">Start webcam</button>
-    <h2>2. Create a new Call</h2>
-    <button id="callButton" disabled>Create Call (offer)</button>
-
-    <h2>3. Join a Call</h2>
-    <p>Answer the call from a different browser window or device</p>
-    
-    <input id="callInput" />
-    <button id="answerButton" disabled>Answer</button>
-
-    <h2>4. Hangup</h2>
-
-    <button id="hangupButton" disabled>Hangup</button>
+    <div class="controls">
+      <div class="control-group">
+        <button id="webcamButton">Start Webcam</button>
+        <button id="callButton" disabled>Create Call</button>
+        <input id="callInput" placeholder="Call ID" />
+        <button id="answerButton" disabled>Join Call</button>
+      </div>
+      <button id="hangupButton" disabled>Hangup</button>
+    </div>
 
     <script type="module" src="/src/main.js"></script>
 
