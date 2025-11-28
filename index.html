@@ -5,37 +5,155 @@
     <link rel="icon" type="image/svg+xml" href="favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>WebRTC Demo</title>
-    <script type="module" crossorigin src="/Video-Call-App/assets/index-BAc8NRGR.js"></script>
-    <link rel="stylesheet" crossorigin href="/Video-Call-App/assets/index-CsPC3qqx.css">
+    <script type="module" crossorigin src="/Video-Call-App/assets/index-B8dRbNLF.js"></script>
+    <link rel="stylesheet" crossorigin href="/Video-Call-App/assets/index-lZI_TrR_.css">
   </head>
   <body>
-    <h2>1. Start your Webcam</h2>
-    <div class="videos">
-      <span>
-        <h3>Local Stream</h3>
-        <video id="webcamVideo" autoplay playsinline></video>
-      </span>
-      <span>
-        <h3>Remote Stream</h3>
-        <video id="remoteVideo" autoplay playsinline></video>
-      </span>
-
-
+    <div class="video-container" id="videoContainer">
+      <div class="video-name-tag remote" id="remoteNameTag">Guest</div>
+      <video id="remoteVideo" autoplay playsinline></video>
+      <div class="camera-off-overlay remote" id="remoteCameraOff">
+        <div class="camera-off-icon">📷</div>
+        <div class="camera-off-text">Camera Off</div>
+      </div>
+      <div class="muted-indicator remote" id="remoteMuted">🔇</div>
+      <div class="local-video-wrapper">
+        <div class="video-name-tag" id="localNameTag">Guest</div>
+        <video id="webcamVideo" class="local-video" autoplay playsinline muted></video>
+        <div class="camera-off-overlay" id="localCameraOff">
+          <div class="camera-off-icon">📷</div>
+          <div class="camera-off-text">Camera Off</div>
+        </div>
+        <div class="muted-indicator" id="localMuted">🔇</div>
+        <div class="resize-handle">⋰</div>
+        <div class="video-tooltip">Click and drag to move</div>
+      </div>
+      <div class="call-controls-overlay">
+        <button id="toggleMute" class="control-btn" disabled title="Mute/Unmute">🎤</button>
+        <button id="toggleCamera" class="control-btn" disabled title="Camera On/Off">📹</button>
+        <button id="toggleFullscreen" class="control-btn" disabled title="Fullscreen">⛶</button>
+        <div id="callTimer" class="call-timer">00:00</div>
+      </div>
+      <div class="connection-indicator" id="connectionIndicator">
+        <div class="signal-bars">
+          <span class="bar"></span>
+          <span class="bar"></span>
+          <span class="bar"></span>
+          <span class="bar"></span>
+        </div>
+        <span class="connection-text">Good</span>
+      </div>
+      <div class="network-stats" id="networkStats">
+        <div class="stat-row">
+          <span class="stat-label">Video:</span>
+          <span id="videoStat">0 kbps</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-label">Audio:</span>
+          <span id="audioStat">0 kbps</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-label">Latency:</span>
+          <span id="latencyStat">0 ms</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-label">Packet Loss:</span>
+          <span id="packetLossStat">0%</span>
+        </div>
+      </div>
     </div>
 
-    <button id="webcamButton">Start webcam</button>
-    <h2>2. Create a new Call</h2>
-    <button id="callButton" disabled>Create Call (offer)</button>
+    <div class="chat-panel" id="chatPanel">
+      <div class="chat-header">
+        <h4>Chat</h4>
+        <button id="toggleChat" class="chat-toggle-btn">✕</button>
+      </div>
+      <div class="chat-messages" id="chatMessages"></div>
+      <div class="chat-input-container">
+        <input type="text" id="chatInput" placeholder="Type a message..." />
+        <button id="sendMessage">Send</button>
+      </div>
+    </div>
 
-    <h2>3. Join a Call</h2>
-    <p>Answer the call from a different browser window or device</p>
-    
-    <input id="callInput" />
-    <button id="answerButton" disabled>Answer</button>
+    <button id="openChat" class="open-chat-btn" title="Open Chat">💬</button>
 
-    <h2>4. Hangup</h2>
+    <div class="controls">
+      <div class="control-group">
+        <button id="webcamButton">Start Webcam</button>
+        <button id="settingsButton" disabled>Settings</button>
+        <button id="callButton" disabled>Create Call</button>
+        <button id="answerButton" disabled>Join Call</button>
+      </div>
+      <button id="hangupButton" disabled>Hangup</button>
+    </div>
 
-    <button id="hangupButton" disabled>Hangup</button>
+    <div id="settingsModal" class="modal">
+      <div class="modal-content">
+        <h3>Settings</h3>
+        <div class="settings-section">
+          <h4>Profile</h4>
+          <div class="setting-group">
+            <label>Username:</label>
+            <input type="text" id="usernameInput" placeholder="Enter your name" maxlength="30" />
+          </div>
+        </div>
+        <div class="settings-section">
+          <h4>Devices</h4>
+          <div class="setting-group">
+            <label>Camera:</label>
+            <select id="videoSelect"></select>
+          </div>
+          <div class="setting-group">
+            <label>Microphone:</label>
+            <select id="audioSelect"></select>
+          </div>
+          <div class="setting-group">
+            <label>Speakers:</label>
+            <select id="audioOutputSelect"></select>
+          </div>
+        </div>
+        <div class="settings-section">
+          <h4>Display</h4>
+          <div class="setting-group">
+            <label>
+              <input type="checkbox" id="showStatsToggle" />
+              Show connection statistics
+            </label>
+          </div>
+        </div>
+        <button id="closeSettings">Close</button>
+      </div>
+    </div>
+
+    <div id="createCallModal" class="modal">
+      <div class="modal-content">
+        <h3>Call Created</h3>
+        <p>Share this call ID with others:</p>
+        <div class="call-id-display">
+          <input id="callIdDisplay" readonly />
+          <button id="copyCallId">Copy</button>
+        </div>
+        <div class="share-buttons">
+          <button id="shareGmail">📧 Share via Gmail</button>
+          <button id="shareOutlook">📧 Share via Outlook</button>
+        </div>
+        <button id="closeCreateCall">Close</button>
+      </div>
+    </div>
+
+    <div id="joinCallModal" class="modal">
+      <div class="modal-content">
+        <h3>Join a Call</h3>
+        <p>Enter the call ID to join:</p>
+        <div class="setting-group">
+          <input id="joinCallInput" placeholder="Enter call ID" />
+        </div>
+        <div class="modal-buttons">
+          <button id="confirmJoinCall">Join</button>
+          <button id="closeJoinCall">Cancel</button>
+        </div>
+      </div>
+    </div>
 
 
   </body>
