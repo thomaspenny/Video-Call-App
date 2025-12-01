@@ -3,7 +3,7 @@ import '../style.css';
 
 // Import the functions you need from the SDKs you need
 import { initializeApp } from "firebase/app";
-import { getFirestore, collection, doc, setDoc, getDoc, addDoc, onSnapshot, updateDoc, serverTimestamp } from "firebase/firestore";
+import { getFirestore, collection, doc, setDoc, getDoc, getDocs, addDoc, onSnapshot, updateDoc, deleteDoc, serverTimestamp } from "firebase/firestore";
 // TODO: Add SDKs for Firebase products that you want to use
 // https://firebase.google.com/docs/web/setup#available-libraries
 
@@ -36,10 +36,9 @@ const servers = {
 };
 
 // Global State
-const pc = new RTCPeerConnection(servers);
+// per-peer RTCPeerConnections will be stored in the `peers` map below
 let localStream = null;
-let remoteStream = null;
-let dataChannel = null;
+let remoteStream = null; // used for legacy single-view fallback
 
 // HTML elements
 const webcamButton = document.getElementById('webcamButton');
@@ -69,9 +68,9 @@ const toggleCamera = document.getElementById('toggleCamera');
 const toggleFullscreen = document.getElementById('toggleFullscreen');
 const callTimer = document.getElementById('callTimer');
 const videoContainer = document.getElementById('videoContainer');
-const localCameraOff = document.getElementById('localCameraOff');
+const localCameraOff = document.getElementById('slot-0-camera-off');
 const remoteCameraOff = document.getElementById('remoteCameraOff');
-const localMuted = document.getElementById('localMuted');
+const localMuted = document.getElementById('slot-0-muted');
 const remoteMuted = document.getElementById('remoteMuted');
 const connectionIndicator = document.getElementById('connectionIndicator');
 const networkStats = document.getElementById('networkStats');
@@ -102,6 +101,360 @@ let username = 'Guest';
 // Device selection
 let currentVideoDevice = null;
 let currentAudioDevice = null;
+
+// Multi-peer support
+const clientId = localStorage.getItem('clientId') || Math.random().toString(36).substring(2, 10);
+localStorage.setItem('clientId', clientId);
+
+// Map of peerId -> { pc, dataChannel, remoteStream, slotIndex, username }
+const peers = {};
+const MAX_PARTICIPANTS = 10; // including local
+
+let focusedPeerId = null; // currently selected thumbnail (to show in main area)
+
+function broadcastData(obj) {
+  Object.values(peers).forEach(p => {
+    const dc = p.dataChannel;
+    if (dc && dc.readyState === 'open') {
+      try { dc.send(JSON.stringify(obj)); } catch (err) { /* ignore */ }
+    }
+  });
+}
+
+function updateFocusedSlotUI() {
+  document.querySelectorAll('.thumb-slot').forEach(el => el.classList.remove('active'));
+  if (focusedPeerId) {
+    const p = peers[focusedPeerId];
+    if (p && p.slotIndex) {
+      const el = document.getElementById(`slot-${p.slotIndex}`);
+      if (el) el.classList.add('active');
+    }
+  } else {
+    const local = document.getElementById('slot-0');
+    if (local) local.classList.add('active');
+  }
+}
+
+// utility: find an available thumbnail slot (1..9) for remote peers
+function allocateSlotForPeer(peerId) {
+  // try to reuse if already allocated
+  for (const [id, p] of Object.entries(peers)) {
+    if (id === peerId && p.slotIndex) return p.slotIndex;
+  }
+
+  // find next empty slot 1..9
+  for (let i = 1; i < MAX_PARTICIPANTS; i++) {
+    const slotEl = document.getElementById(`slot-${i}`);
+    if (!slotEl) continue;
+    // check if any peer already uses this index
+    const used = Object.values(peers).some(p => p.slotIndex === i);
+    if (!used) return i;
+  }
+  return null;
+}
+
+function getSlotElementFor(peerId) {
+  const p = peers[peerId];
+  if (!p || !p.slotIndex) return null;
+  return document.getElementById(`slot-${p.slotIndex}`);
+}
+
+function createOrGetVideoForPeer(peerId) {
+  const slotIndex = peers[peerId].slotIndex || allocateSlotForPeer(peerId);
+  if (!slotIndex) return null;
+  peers[peerId].slotIndex = slotIndex;
+
+  const slotEl = document.getElementById(`slot-${slotIndex}`);
+  slotEl.classList.remove('empty');
+
+  // ensure a video element exists
+  let vid = slotEl.querySelector('video');
+  if (!vid) {
+    vid = document.createElement('video');
+    vid.className = 'thumb-video';
+    vid.autoplay = true;
+    vid.playsInline = true;
+    vid.id = `slot-${slotIndex}-video`;
+    slotEl.appendChild(vid);
+  }
+
+  // ensure name tag
+  let nameTag = slotEl.querySelector('.slot-name');
+  if (!nameTag) {
+    nameTag = document.createElement('div');
+    nameTag.className = 'video-name-tag slot-name';
+    nameTag.id = `slot-${slotIndex}-name`;
+    nameTag.textContent = peers[peerId].username || 'Guest';
+    slotEl.appendChild(nameTag);
+  }
+
+  // ensure small camera-off overlay and muted indicator for this slot
+  if (!slotEl.querySelector('.camera-off-overlay')) {
+    const overlay = document.createElement('div');
+    overlay.className = 'camera-off-overlay small';
+    overlay.id = `slot-${slotIndex}-camera-off`;
+    overlay.innerHTML = '<div class="camera-off-icon">📷</div>';
+    slotEl.appendChild(overlay);
+  }
+
+  if (!slotEl.querySelector('.muted-indicator')) {
+    const m = document.createElement('div');
+    m.className = 'muted-indicator small';
+    m.id = `slot-${slotIndex}-muted`;
+    m.textContent = '🔇';
+    slotEl.appendChild(m);
+  }
+
+  return vid;
+}
+
+// Firestore helpers + multi-peer signal handlers
+let currentCallRef = null;
+let participantsUnsub = null;
+let signalsUnsub = null;
+
+async function sendSignal(payload) {
+  if (!currentCallRef) return;
+  const signalsCol = collection(currentCallRef, 'signals');
+  await addDoc(signalsCol, { ...payload, createdAt: serverTimestamp() });
+}
+
+async function updateMyParticipantRecord() {
+  if (!currentCallRef) return;
+  const myDoc = doc(currentCallRef, 'participants', clientId);
+  try {
+    await setDoc(myDoc, { username }, { merge: true });
+  } catch (err) {
+    console.error('Failed to update participant record:', err);
+  }
+}
+
+async function enterCall(callId, isCreator = false) {
+  currentCallRef = doc(db, 'calls', callId);
+
+  // if creator, ensure the call doc exists
+  if (isCreator) {
+    try {
+      await setDoc(currentCallRef, { createdAt: serverTimestamp() });
+    } catch (err) {
+      console.error('Error creating call doc:', err);
+    }
+  }
+
+  // add this client to participants
+  try {
+    const participantsColNow = collection(currentCallRef, 'participants');
+    // if the room is full, don't join
+    const existing = await getDocs(participantsColNow);
+    if (!isCreator && existing.size >= MAX_PARTICIPANTS) {
+      alert('Call is full (maximum ' + MAX_PARTICIPANTS + ' participants)');
+      return;
+    }
+
+    await setDoc(doc(currentCallRef, 'participants', clientId), { username, joinedAt: serverTimestamp() }, { merge: true });
+  } catch (err) {
+    console.error('Failed to join call participants collection:', err);
+  }
+
+  // Watch participants list
+  const participantsCol = collection(currentCallRef, 'participants');
+  participantsUnsub = onSnapshot(participantsCol, (snapshot) => {
+    snapshot.docChanges().forEach(async (change) => {
+      const pid = change.doc.id;
+      const data = change.doc.data();
+
+      if (change.type === 'added') {
+        if (pid === clientId) return; // ignore self
+        peers[pid] = peers[pid] || {};
+        peers[pid].username = data.username || 'Guest';
+
+        // assign slot and create video element placeholder
+        createOrGetVideoForPeer(pid);
+
+        // who should initiate? deterministic rule by id ordering
+        if (clientId < pid) {
+          // we initiate to them
+          await createPeerConnection(pid, true);
+        } else {
+          // wait for offer from them
+          await createPeerConnection(pid, false);
+        }
+        // If nothing is focused yet, auto-focus the first remote who joined
+          if (!focusedPeerId) {
+          focusedPeerId = pid;
+          remoteVideo.srcObject = peers[pid].remoteStream;
+          remoteNameTag.textContent = peers[pid].username || 'Guest';
+             updateFocusedSlotUI();
+        }
+      } else if (change.type === 'removed') {
+        cleanupPeer(pid);
+      } else if (change.type === 'modified') {
+        // update username change
+        if (peers[pid]) {
+          peers[pid].username = data.username || 'Guest';
+          const slot = getSlotElementFor(pid);
+          if (slot) {
+            const n = slot.querySelector('.slot-name');
+            if (n) n.textContent = peers[pid].username;
+          }
+        }
+      }
+    });
+  });
+
+  // Watch signals subcollection
+  const signalsCol = collection(currentCallRef, 'signals');
+  signalsUnsub = onSnapshot(signalsCol, (snapshot) => {
+    snapshot.docChanges().forEach(async (change) => {
+      if (change.type !== 'added') return;
+      const data = change.doc.data();
+      if (!data || data.to !== clientId) return;
+
+      const from = data.from;
+      if (data.type === 'offer') {
+        // someone offered to us; create pc (if not exists), set remote and answer
+        peers[from] = peers[from] || {};
+        peers[from].username = peers[from].username || 'Guest';
+        const pc = await createPeerConnection(from, false);
+        const offerDesc = { type: 'offer', sdp: data.sdp };
+        await pc.setRemoteDescription(new RTCSessionDescription(offerDesc));
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+        await sendSignal({ type: 'answer', from: clientId, to: from, sdp: answer.sdp });
+      } else if (data.type === 'answer') {
+        // an answer to our earlier offer
+        const pc = peers[from] && peers[from].pc;
+        if (pc) {
+          const answerDesc = { type: 'answer', sdp: data.sdp };
+          await pc.setRemoteDescription(new RTCSessionDescription(answerDesc));
+        }
+      } else if (data.type === 'ice') {
+        const pc = peers[from] && peers[from].pc;
+        if (pc && data.candidate) {
+          try {
+            await pc.addIceCandidate(new RTCIceCandidate(data.candidate));
+          } catch (err) {
+            console.warn('Failed to add remote ICE candidate', err);
+          }
+          } else if (data.type === 'left') {
+            // remote left the call
+            console.log('Peer left:', from);
+            cleanupPeer(from);
+        }
+      }
+    });
+  });
+
+  // update our participant record with current username
+  await updateMyParticipantRecord();
+
+  // show chat, start timer and stats
+  startCallTimer();
+  startStatsMonitoring();
+  openChat.classList.add('active');
+}
+
+async function leaveCall() {
+  // remove participant doc
+  if (currentCallRef) {
+    try {
+      await addDoc(collection(currentCallRef, 'signals'), { type: 'left', from: clientId, createdAt: serverTimestamp() });
+      // remove our participant record
+      await deleteDoc(doc(currentCallRef, 'participants', clientId));
+    } catch (_) {}
+
+    // cleanup listeners
+    if (participantsUnsub) participantsUnsub();
+    if (signalsUnsub) signalsUnsub();
+  }
+
+  // cleanup peers
+  Object.keys(peers).forEach(pid => cleanupPeer(pid));
+
+  currentCallRef = null;
+  stopCallTimer();
+  stopStatsMonitoring();
+  openChat.classList.remove('active');
+}
+
+async function createPeerConnection(peerId, isInitiator = false) {
+  if (!currentCallRef) throw new Error('Not in a call');
+  if (peers[peerId] && peers[peerId].pc) return peers[peerId].pc;
+
+  const pc = new RTCPeerConnection(servers);
+  const remoteStream = new MediaStream();
+
+  peers[peerId] = peers[peerId] || {};
+  peers[peerId].pc = pc;
+  peers[peerId].remoteStream = remoteStream;
+
+  // Attach remote stream to a slot video
+  const vid = createOrGetVideoForPeer(peerId);
+    if (vid) {
+      vid.srcObject = remoteStream;
+      updateFocusedSlotUI();
+    }
+
+  // Add local tracks if available
+  if (localStream) {
+    localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+  }
+
+  // Data channel handling
+  if (isInitiator) {
+    const dc = pc.createDataChannel('data');
+    peers[peerId].dataChannel = dc;
+    setupDataChannel(dc, peerId);
+  } else {
+    pc.ondatachannel = (ev) => {
+      peers[peerId].dataChannel = ev.channel;
+      setupDataChannel(ev.channel, peerId);
+    };
+  }
+
+  // Tracks
+  pc.ontrack = (event) => {
+    event.streams[0].getTracks().forEach(t => remoteStream.addTrack(t));
+  };
+
+  // ICE candidate -> send to the specific peer
+  pc.onicecandidate = ({ candidate }) => {
+    if (candidate) {
+      // make sure we don't send a class instance to Firestore
+      const serial = candidate && typeof candidate.toJSON === 'function' ? candidate.toJSON() : candidate;
+      sendSignal({ type: 'ice', from: clientId, to: peerId, candidate: serial });
+    }
+  };
+
+  // If initiator, create an offer
+  if (isInitiator) {
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+    await sendSignal({ type: 'offer', from: clientId, to: peerId, sdp: offer.sdp });
+  }
+
+  return pc;
+}
+
+function cleanupPeer(peerId) {
+  const p = peers[peerId];
+  if (!p) return;
+  if (p.pc) {
+    try { p.pc.close(); } catch(_){}
+  }
+  if (p.dataChannel) {
+    try { p.dataChannel.close(); } catch(_){}
+  }
+  // clear remote video slot
+  if (p.slotIndex) {
+    const el = document.getElementById(`slot-${p.slotIndex}`);
+    if (el) {
+      el.innerHTML = '';
+      el.classList.add('empty');
+    }
+  }
+  delete peers[peerId];
+}
 
 async function getDevices() {
   const devices = await navigator.mediaDevices.enumerateDevices();
@@ -160,20 +513,21 @@ async function updateStream() {
   
   webcamVideo.srcObject = localStream;
   
-  // Update peer connection with new tracks
-  if (pc) {
-    const senders = pc.getSenders();
+  // Update each peer connection with the new tracks
+  Object.values(peers).forEach(p => {
+    if (!p.pc) return;
+    const senders = p.pc.getSenders ? p.pc.getSenders() : [];
     const videoTrack = localStream.getVideoTracks()[0];
     const audioTrack = localStream.getAudioTracks()[0];
-    
     senders.forEach(sender => {
+      if (!sender.track) return;
       if (sender.track.kind === 'video' && videoTrack) {
         sender.replaceTrack(videoTrack);
       } else if (sender.track.kind === 'audio' && audioTrack) {
         sender.replaceTrack(audioTrack);
       }
     });
-  }
+  });
   
   // Stop old tracks
   if (oldStream) {
@@ -217,14 +571,9 @@ usernameInput.oninput = () => {
   username = usernameInput.value.trim() || 'Guest';
   localStorage.setItem('username', username);
   localNameTag.textContent = username;
-  
-  // Send username update to remote peer
-  if (dataChannel && dataChannel.readyState === 'open') {
-    dataChannel.send(JSON.stringify({ 
-      type: 'username', 
-      username: username
-    }));
-  }
+  // update our participant record and broadcast to peers
+  updateMyParticipantRecord();
+  broadcastData({ type: 'username', username });
 };
 
 closeCreateCall.onclick = () => {
@@ -292,55 +641,18 @@ sendMessage.onclick = () => {
   sendChatMessage();
 };
 
-chatInput.onkeypress = (e) => {
-  if (e.key === 'Enter') {
-    sendChatMessage();
-  }
+callButton.onclick = async () => {
+  // Create a short call id and enter the call as the creator
+  const shortId = Math.random().toString(36).substring(2, 12);
+  callIdDisplay.value = shortId;
+  createCallModal.classList.add('active');
+
+  // create the empty call doc and then enter
+  const callDoc = doc(db, 'calls', shortId);
+  await setDoc(callDoc, { createdAt: serverTimestamp() });
+  await enterCall(shortId, true);
+  hangupButton.disabled = false;
 };
-
-function sendChatMessage() {
-  const message = chatInput.value.trim();
-  if (!message || !dataChannel || dataChannel.readyState !== 'open') return;
-  
-  // Add message to own chat
-  addMessage(message, 'sent', username);
-  
-  // Send to remote peer
-  dataChannel.send(JSON.stringify({ 
-    type: 'chat', 
-    message: message,
-    username: username,
-    timestamp: Date.now()
-  }));
-  
-  chatInput.value = '';
-}
-
-function addMessage(text, type, sender) {
-  const messageDiv = document.createElement('div');
-  messageDiv.className = `message ${type}`;
-  
-  const senderSpan = document.createElement('div');
-  senderSpan.className = 'message-sender';
-  senderSpan.textContent = sender || 'Guest';
-  
-  const messageText = document.createElement('span');
-  messageText.textContent = text;
-  
-  const timeSpan = document.createElement('span');
-  timeSpan.className = 'message-time';
-  const now = new Date();
-  timeSpan.textContent = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  
-  messageDiv.appendChild(senderSpan);
-  messageDiv.appendChild(messageText);
-  messageDiv.appendChild(timeSpan);
-  chatMessages.appendChild(messageDiv);
-  
-  // Scroll to bottom
-  chatMessages.scrollTop = chatMessages.scrollHeight;
-}
-
 // Mute/Unmute microphone
 toggleMute.onclick = () => {
   if (localStream) {
@@ -351,11 +663,9 @@ toggleMute.onclick = () => {
       toggleMute.classList.toggle('muted', isMuted);
       toggleMute.textContent = isMuted ? '🔇' : '🎤';
       localMuted.classList.toggle('active', isMuted);
-      
-      // Send mute state to remote peer
-      if (dataChannel && dataChannel.readyState === 'open') {
-        dataChannel.send(JSON.stringify({ type: 'mute', muted: isMuted }));
-      }
+
+      // Send mute state to all peers
+      broadcastData({ type: 'mute', muted: isMuted });
     }
   }
 };
@@ -370,11 +680,9 @@ toggleCamera.onclick = () => {
       toggleCamera.classList.toggle('camera-off', isCameraOff);
       toggleCamera.textContent = isCameraOff ? '📷' : '📹';
       localCameraOff.classList.toggle('active', isCameraOff);
-      
-      // Send camera state to remote peer
-      if (dataChannel && dataChannel.readyState === 'open') {
-        dataChannel.send(JSON.stringify({ type: 'camera', enabled: videoTrack.enabled }));
-      }
+
+      // Send camera state to all peers
+      broadcastData({ type: 'camera', enabled: videoTrack.enabled });
     }
   }
 };
@@ -418,9 +726,11 @@ async function startStatsMonitoring() {
   }
   
   statsInterval = setInterval(async () => {
-    if (!pc) return;
-    
-    const stats = await pc.getStats();
+    if (!focusedPeerId) return;
+    const p = peers[focusedPeerId];
+    if (!p || !p.pc) return;
+
+    const stats = await p.pc.getStats();
     let videoBitrate = 0;
     let audioBitrate = 0;
     let latency = 0;
@@ -489,30 +799,52 @@ function stopStatsMonitoring() {
 }
 
 // Data channel setup
-function setupDataChannel(channel) {
+function setupDataChannel(channel, peerId) {
   channel.onopen = () => {
-    console.log('Data channel opened');
-    // Send initial username
-    channel.send(JSON.stringify({ 
-      type: 'username', 
-      username: username
-    }));
+    console.log('Data channel opened for', peerId);
+    // Send initial username to peer
+    try {
+      channel.send(JSON.stringify({ type: 'username', username }));
+    } catch (err) {
+      // channel may not be open yet
+    }
   };
-  
+
   channel.onmessage = (event) => {
     const data = JSON.parse(event.data);
+    const p = peers[peerId];
+    // update UI for specific peer slot
+    const slotEl = getSlotElementFor(peerId);
+
     if (data.type === 'camera') {
-      remoteCameraOff.classList.toggle('active', !data.enabled);
-    } else if (data.type === 'mute') {
-      remoteMuted.classList.toggle('active', data.muted);
-    } else if (data.type === 'chat') {
-      addMessage(data.message, 'received', data.username || 'Guest');
-      // Show notification if chat is closed
-      if (!chatPanel.classList.contains('open')) {
-        openChat.classList.add('has-new');
+      if (slotEl) {
+        const overlay = slotEl.querySelector('.camera-off-overlay');
+        overlay && overlay.classList.toggle('active', !data.enabled);
       }
+      if (peerId === focusedPeerId) {
+        remoteCameraOff.classList.toggle('active', !data.enabled);
+      }
+    } else if (data.type === 'mute') {
+      if (slotEl) {
+        const mutedEl = slotEl.querySelector('.muted-indicator');
+        mutedEl && mutedEl.classList.toggle('active', data.muted);
+      }
+      if (peerId === focusedPeerId) {
+        remoteMuted.classList.toggle('active', data.muted);
+      }
+    } else if (data.type === 'chat') {
+      addMessage(data.message, 'received', data.username || (p && p.username) || 'Guest');
+      // Show notification if chat is closed
+      if (!chatPanel.classList.contains('open')) openChat.classList.add('has-new');
     } else if (data.type === 'username') {
-      remoteNameTag.textContent = data.username || 'Guest';
+      if (p) p.username = data.username || 'Guest';
+      if (slotEl) {
+        const nameTag = slotEl.querySelector('.slot-name');
+        if (nameTag) nameTag.textContent = data.username || 'Guest';
+      }
+      if (peerId === focusedPeerId) {
+        remoteNameTag.textContent = data.username || 'Guest';
+      }
     }
   };
   
@@ -521,73 +853,34 @@ function setupDataChannel(channel) {
   };
 }
 
-// Make local video draggable and resizable
-let isDragging = false;
-let isResizing = false;
-let currentX, currentY, initialX, initialY;
-let initialWidth, initialHeight;
+// Local video is now fixed in the thumbnail bar. Add click-to-focus handlers
+const topThumbnails = document.getElementById('topThumbnails');
 
-const videoWrapper = document.querySelector('.local-video-wrapper');
-const resizeHandle = document.querySelector('.resize-handle');
+// clicking a thumbnail focuses that participant into the main view
+topThumbnails?.addEventListener('click', (e) => {
+  const slot = e.target.closest('.thumb-slot');
+  if (!slot) return;
 
-videoWrapper.addEventListener('mousedown', startDrag);
-document.addEventListener('mousemove', drag);
-document.addEventListener('mouseup', stopDrag);
-
-function startDrag(e) {
-  if (e.target === resizeHandle || e.target.closest('.resize-handle')) {
-    isResizing = true;
-    const rect = videoWrapper.getBoundingClientRect();
-    initialWidth = rect.width;
-    initialHeight = rect.height;
-    webcamVideo.style.opacity = '0.3'; // Dim video during resize
-    e.preventDefault();
-  } else if (e.target === webcamVideo || e.target.closest('.local-video-wrapper')) {
-    isDragging = true;
-    const rect = videoWrapper.getBoundingClientRect();
-    initialX = e.clientX - rect.left;
-    initialY = e.clientY - rect.top;
-    e.preventDefault();
-  }
-}
-
-function drag(e) {
-  if (isDragging) {
-    e.preventDefault();
-    const container = document.querySelector('.video-container');
-    const containerRect = container.getBoundingClientRect();
-    
-    let newLeft = e.clientX - containerRect.left - initialX;
-    let newTop = e.clientY - containerRect.top - initialY;
-    
-    // Keep within bounds
-    const wrapperRect = videoWrapper.getBoundingClientRect();
-    newLeft = Math.max(0, Math.min(newLeft, containerRect.width - wrapperRect.width));
-    newTop = Math.max(0, Math.min(newTop, containerRect.height - wrapperRect.height));
-    
-    videoWrapper.style.left = newLeft + 'px';
-    videoWrapper.style.top = newTop + 'px';
-    videoWrapper.style.right = 'auto';
-  } else if (isResizing) {
-    e.preventDefault();
-    const rect = videoWrapper.getBoundingClientRect();
-    const newWidth = initialWidth + (e.clientX - rect.right);
-    const newHeight = initialHeight + (e.clientY - rect.bottom);
-    
-    if (newWidth > 80 && newWidth < 600) {
-      videoWrapper.style.width = newWidth + 'px';
-      videoWrapper.style.height = (newWidth * 0.75) + 'px'; // Maintain aspect ratio
+  // If the slot contains a video element with a stream, focus that on the main remote player
+  const vid = slot.querySelector('video');
+  if (vid && vid.srcObject) {
+    // Set focused peer id (slot 0 = local)
+    const idx = parseInt(slot.dataset.index);
+    if (idx === 0) {
+      focusedPeerId = null;
+    } else {
+      // find peer id that owns this slot
+      const found = Object.entries(peers).find(([id, p]) => p.slotIndex === idx);
+      focusedPeerId = found ? found[0] : null;
     }
-  }
-}
 
-function stopDrag() {
-  isDragging = false;
-  if (isResizing) {
-    webcamVideo.style.opacity = '1'; // Restore video
+    // Show the selected stream in the main area
+    remoteVideo.srcObject = vid.srcObject;
+    // Update the big name tag
+    const nameTag = slot.querySelector('.slot-name');
+    remoteNameTag.textContent = nameTag ? nameTag.textContent : 'Guest';
   }
-  isResizing = false;
-}
+});
 
 // 1. Setup media sources
 
@@ -602,22 +895,17 @@ webcamButton.onclick = async () => {
     alert('Error accessing webcam: ' + error.message);
     return;
   }
-  remoteStream = new MediaStream();
-
-  // Push tracks from local stream to peer connection
-  localStream.getTracks().forEach((track) => {
-    pc.addTrack(track, localStream);
+  // For multi-peer, create per-peer tracks and create a remote stream slot for each peer
+  Object.keys(peers).forEach(pid => {
+    const p = peers[pid];
+    if (p.pc) {
+      localStream.getTracks().forEach(track => p.pc.addTrack(track, localStream));
+    }
   });
 
-  // Pull tracks from remote stream, add to video stream
-  pc.ontrack = (event) => {
-    event.streams[0].getTracks().forEach((track) => {
-      remoteStream.addTrack(track);
-    });
-  };
-
+  // show local preview in the local thumbnail and set main area to local (until someone else joins/focused)
   webcamVideo.srcObject = localStream;
-  remoteVideo.srcObject = remoteStream;
+  remoteVideo.srcObject = localStream;
 
   // Get available devices
   await getDevices();
@@ -648,64 +936,12 @@ webcamButton.onclick = async () => {
 callButton.onclick = async () => {
   // Generate short call ID (10 characters)
   const shortId = Math.random().toString(36).substring(2, 12);
-  
-  // Reference Firestore collections for signaling
-  const callDoc = doc(db, 'calls', shortId);
-  const offerCandidates = collection(callDoc, 'offerCandidates');
-  const answerCandidates = collection(callDoc, 'answerCandidates');
-
   // Show modal with call ID
   callIdDisplay.value = shortId;
   createCallModal.classList.add('active');
 
-  // Create data channel for camera state
-  dataChannel = pc.createDataChannel('cameraState');
-  setupDataChannel(dataChannel);
-
-  // Get candidates for caller, save to db
-  pc.onicecandidate = (event) => {
-    event.candidate && addDoc(offerCandidates, event.candidate.toJSON());
-  };
-
-  // Create offer
-  const offerDescription = await pc.createOffer();
-  await pc.setLocalDescription(offerDescription);
-
-  const offer = {
-    sdp: offerDescription.sdp,
-    type: offerDescription.type,
-  };
-
-  await setDoc(callDoc, { offer, createdAt: serverTimestamp() });
-
-  // Start call timer
-  startCallTimer();
-  
-  // Start stats monitoring
-  startStatsMonitoring();
-  
-  // Show chat button
-  openChat.classList.add('active');
-
-  // Listen for remote answer
-  onSnapshot(callDoc, (snapshot) => {
-    const data = snapshot.data();
-    if (!pc.currentRemoteDescription && data?.answer) {
-      const answerDescription = new RTCSessionDescription(data.answer);
-      pc.setRemoteDescription(answerDescription);
-    }
-  });
-
-  // When answered, add candidate to peer connection
-  onSnapshot(answerCandidates, (snapshot) => {
-    snapshot.docChanges().forEach((change) => {
-      if (change.type === 'added') {
-        const candidate = new RTCIceCandidate(change.doc.data());
-        pc.addIceCandidate(candidate);
-      }
-    });
-  });
-
+  // Enter a room as the creator
+  await enterCall(shortId, true);
   hangupButton.disabled = false;
 };
 
@@ -716,54 +952,13 @@ confirmJoinCall.onclick = async () => {
     alert('Please enter a call ID');
     return;
   }
-  
+
   joinCallModal.classList.remove('active');
-  
-  const callDoc = doc(db, 'calls', callId);
-  const answerCandidates = collection(callDoc, 'answerCandidates');
-  const offerCandidates = collection(callDoc, 'offerCandidates');
+  // Enter existing room as a participant
+  await enterCall(callId, false);
+};
 
-  // Listen for data channel from caller
-  pc.ondatachannel = (event) => {
-    dataChannel = event.channel;
-    setupDataChannel(dataChannel);
-  };
-
-  pc.onicecandidate = (event) => {
-    event.candidate && addDoc(answerCandidates, event.candidate.toJSON());
-  };
-
-  const callData = (await getDoc(callDoc)).data();
-
-  const offerDescription = callData.offer;
-  await pc.setRemoteDescription(new RTCSessionDescription(offerDescription));
-
-  const answerDescription = await pc.createAnswer();
-  await pc.setLocalDescription(answerDescription);
-
-  const answer = {
-    type: answerDescription.type,
-    sdp: answerDescription.sdp,
-  };
-
-  await updateDoc(callDoc, { answer });
-
-  // Start call timer
-  startCallTimer();
-  
-  // Start stats monitoring
-  startStatsMonitoring();
-  
-  // Show chat button
-  openChat.classList.add('active');
-
-  onSnapshot(offerCandidates, (snapshot) => {
-    snapshot.docChanges().forEach((change) => {
-      console.log(change);
-      if (change.type === 'added') {
-        let data = change.doc.data();
-        pc.addIceCandidate(new RTCIceCandidate(data));
-      }
-    });
-  });
+hangupButton.onclick = async () => {
+  await leaveCall();
+  hangupButton.disabled = true;
 };
