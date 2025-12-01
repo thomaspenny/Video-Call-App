@@ -5,8 +5,8 @@
     <link rel="icon" type="image/svg+xml" href="favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>WebRTC Demo</title>
-    <script type="module" crossorigin src="/Video-Call-App/assets/index-B8dRbNLF.js"></script>
-    <link rel="stylesheet" crossorigin href="/Video-Call-App/assets/index-lZI_TrR_.css">
+    <script type="module" crossorigin src="/Video-Call-App/assets/index-1alTOden.js"></script>
+    <link rel="stylesheet" crossorigin href="/Video-Call-App/assets/index-Dgo9KdXE.css">
   </head>
   <body>
     <div class="video-container" id="videoContainer">
@@ -17,16 +17,28 @@
         <div class="camera-off-text">Camera Off</div>
       </div>
       <div class="muted-indicator remote" id="remoteMuted">🔇</div>
-      <div class="local-video-wrapper">
-        <div class="video-name-tag" id="localNameTag">Guest</div>
-        <video id="webcamVideo" class="local-video" autoplay playsinline muted></video>
-        <div class="camera-off-overlay" id="localCameraOff">
-          <div class="camera-off-icon">📷</div>
-          <div class="camera-off-text">Camera Off</div>
+      <!-- Top thumbnails bar - holds up to 10 participant thumbnails, expands from the middle -->
+      <div class="top-thumbnails" id="topThumbnails">
+        <!-- Slot 0 will be the local camera -->
+        <div class="thumb-slot" data-index="0" id="slot-0">
+          <div class="video-name-tag slot-name" id="localNameTag">Guest</div>
+          <video id="webcamVideo" class="thumb-video" autoplay playsinline muted></video>
+          <div class="camera-off-overlay small" id="slot-0-camera-off">
+            <div class="camera-off-icon">📷</div>
+          </div>
+          <div class="muted-indicator small" id="slot-0-muted">🔇</div>
         </div>
-        <div class="muted-indicator" id="localMuted">🔇</div>
-        <div class="resize-handle">⋰</div>
-        <div class="video-tooltip">Click and drag to move</div>
+
+        <!-- additional slots (1..9) will be filled dynamically as peers join -->
+        <div class="thumb-slot empty" data-index="1" id="slot-1"></div>
+        <div class="thumb-slot empty" data-index="2" id="slot-2"></div>
+        <div class="thumb-slot empty" data-index="3" id="slot-3"></div>
+        <div class="thumb-slot empty" data-index="4" id="slot-4"></div>
+        <div class="thumb-slot empty" data-index="5" id="slot-5"></div>
+        <div class="thumb-slot empty" data-index="6" id="slot-6"></div>
+        <div class="thumb-slot empty" data-index="7" id="slot-7"></div>
+        <div class="thumb-slot empty" data-index="8" id="slot-8"></div>
+        <div class="thumb-slot empty" data-index="9" id="slot-9"></div>
       </div>
       <div class="call-controls-overlay">
         <button id="toggleMute" class="control-btn" disabled title="Mute/Unmute">🎤</button>
