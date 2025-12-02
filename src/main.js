@@ -615,18 +615,16 @@ copyCallId.onclick = async () => {
 shareGmail.onclick = () => {
   const callId = callIdDisplay.value;
   const baseUrl = window.location.origin + window.location.pathname;
-  const joinUrl = `${baseUrl}?join=${callId}`;
   const subject = encodeURIComponent('Join my video call');
-  const body = encodeURIComponent(`Hi,\n\nJoin my video call by clicking this link:\n${joinUrl}\n\nOr go to ${baseUrl} and use call ID: ${callId}\n\nSee you soon!`);
+  const body = encodeURIComponent(`Hi,\n\nJoin my video call!\n\nWebsite: ${baseUrl}\nCall ID: ${callId}\n\nClick "Join Call" and enter the Call ID above.\n\nSee you soon!`);
   window.open(`https://mail.google.com/mail/?view=cm&fs=1&su=${subject}&body=${body}`, '_blank');
 };
 
 shareOutlook.onclick = () => {
   const callId = callIdDisplay.value;
   const baseUrl = window.location.origin + window.location.pathname;
-  const joinUrl = `${baseUrl}?join=${callId}`;
   const subject = encodeURIComponent('Join my video call');
-  const body = encodeURIComponent(`Hi,\n\nJoin my video call by clicking this link:\n${joinUrl}\n\nOr go to ${baseUrl} and use call ID: ${callId}\n\nSee you soon!`);
+  const body = encodeURIComponent(`Hi,\n\nJoin my video call!\n\nWebsite: ${baseUrl}\nCall ID: ${callId}\n\nClick "Join Call" and enter the Call ID above.\n\nSee you soon!`);
   window.open(`https://outlook.office.com/mail/deeplink/compose?subject=${subject}&body=${body}`, '_blank');
 };
 
@@ -958,7 +956,7 @@ webcamButton.onclick = async () => {
   console.log('Audio track enabled:', audioTrack?.enabled);
 
   callButton.disabled = false;
-  answerButton.disabled = false;
+  // answerButton is always enabled - validation happens on click
   webcamButton.disabled = true;
   hangupButton.disabled = false;
   settingsButton.disabled = false;
@@ -969,6 +967,10 @@ webcamButton.onclick = async () => {
 
 // 2. Create an offer
 callButton.onclick = async () => {
+  if (!localStream) {
+    alert('Please start your webcam first');
+    return;
+  }
   // Generate short call ID (10 characters)
   const shortId = Math.random().toString(36).substring(2, 12);
   // Show modal with call ID
@@ -982,6 +984,12 @@ callButton.onclick = async () => {
 
 // 3. Answer the call with the unique ID
 confirmJoinCall.onclick = async () => {
+  if (!localStream) {
+    alert('Please start your webcam first before joining a call');
+    joinCallModal.classList.remove('active');
+    return;
+  }
+  
   const callId = joinCallInput.value.trim();
   if (!callId) {
     alert('Please enter a call ID');
@@ -997,17 +1005,3 @@ hangupButton.onclick = async () => {
   await leaveCall();
   hangupButton.disabled = true;
 };
-
-// Auto-join from URL parameter
-window.addEventListener('DOMContentLoaded', () => {
-  const urlParams = new URLSearchParams(window.location.search);
-  const joinCallId = urlParams.get('join');
-  
-  if (joinCallId) {
-    console.log('Auto-joining call from URL:', joinCallId);
-    // Pre-fill the join input
-    joinCallInput.value = joinCallId;
-    // Show the join modal
-    joinCallModal.classList.add('active');
-  }
-});
