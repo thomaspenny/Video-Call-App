@@ -246,7 +246,8 @@ async function enterCall(callId, isCreator = false) {
     const participantsColNow = collection(currentCallRef, 'participants');
     // if the room is full, don't join
     const existing = await getDocs(participantsColNow);
-    if (!isCreator && existing.size >= MAX_PARTICIPANTS) {
+    console.log('Joining call - current participants:', existing.size, 'MAX:', MAX_PARTICIPANTS);
+    if (existing.size >= MAX_PARTICIPANTS) {
       alert('Call is full (maximum ' + MAX_PARTICIPANTS + ' participants)');
       return;
     }
@@ -324,9 +325,15 @@ async function enterCall(callId, isCreator = false) {
       } else if (data.type === 'answer') {
         // an answer to our earlier offer
         const pc = peers[from] && peers[from].pc;
-        if (pc) {
-          const answerDesc = { type: 'answer', sdp: data.sdp };
-          await pc.setRemoteDescription(new RTCSessionDescription(answerDesc));
+        if (pc && pc.signalingState !== 'stable') {
+          try {
+            const answerDesc = { type: 'answer', sdp: data.sdp };
+            await pc.setRemoteDescription(new RTCSessionDescription(answerDesc));
+          } catch (err) {
+            console.error('Failed to set remote description:', err);
+          }
+        } else {
+          console.log('Ignoring answer - PC not ready or already stable', pc?.signalingState);
         }
       } else if (data.type === 'ice') {
         const pc = peers[from] && peers[from].pc;
@@ -414,7 +421,13 @@ async function createPeerConnection(peerId, isInitiator = false) {
 
   // Tracks
   pc.ontrack = (event) => {
-    event.streams[0].getTracks().forEach(t => remoteStream.addTrack(t));
+    console.log('Received track from', peerId, 'streams:', event.streams.length);
+    if (event.streams && event.streams[0]) {
+      event.streams[0].getTracks().forEach(t => remoteStream.addTrack(t));
+    } else if (event.track) {
+      // Fallback: add track directly if no streams
+      remoteStream.addTrack(event.track);
+    }
   };
 
   // ICE candidate -> send to the specific peer
@@ -601,15 +614,19 @@ copyCallId.onclick = async () => {
 
 shareGmail.onclick = () => {
   const callId = callIdDisplay.value;
+  const baseUrl = window.location.origin + window.location.pathname;
+  const joinUrl = `${baseUrl}?join=${callId}`;
   const subject = encodeURIComponent('Join my video call');
-  const body = encodeURIComponent(`Hi,\n\nJoin my video call using this ID: ${callId}\n\nGo to ${window.location.origin} and click "Join Call", then enter the call ID.\n\nSee you soon!`);
+  const body = encodeURIComponent(`Hi,\n\nJoin my video call by clicking this link:\n${joinUrl}\n\nOr go to ${baseUrl} and use call ID: ${callId}\n\nSee you soon!`);
   window.open(`https://mail.google.com/mail/?view=cm&fs=1&su=${subject}&body=${body}`, '_blank');
 };
 
 shareOutlook.onclick = () => {
   const callId = callIdDisplay.value;
+  const baseUrl = window.location.origin + window.location.pathname;
+  const joinUrl = `${baseUrl}?join=${callId}`;
   const subject = encodeURIComponent('Join my video call');
-  const body = encodeURIComponent(`Hi,\n\nJoin my video call using this ID: ${callId}\n\nGo to ${window.location.origin} and click "Join Call", then enter the call ID.\n\nSee you soon!`);
+  const body = encodeURIComponent(`Hi,\n\nJoin my video call by clicking this link:\n${joinUrl}\n\nOr go to ${baseUrl} and use call ID: ${callId}\n\nSee you soon!`);
   window.open(`https://outlook.office.com/mail/deeplink/compose?subject=${subject}&body=${body}`, '_blank');
 };
 
@@ -980,3 +997,17 @@ hangupButton.onclick = async () => {
   await leaveCall();
   hangupButton.disabled = true;
 };
+
+// Auto-join from URL parameter
+window.addEventListener('DOMContentLoaded', () => {
+  const urlParams = new URLSearchParams(window.location.search);
+  const joinCallId = urlParams.get('join');
+  
+  if (joinCallId) {
+    console.log('Auto-joining call from URL:', joinCallId);
+    // Pre-fill the join input
+    joinCallInput.value = joinCallId;
+    // Show the join modal
+    joinCallModal.classList.add('active');
+  }
+});
