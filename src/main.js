@@ -662,7 +662,7 @@ toggleMute.onclick = () => {
       isMuted = !audioTrack.enabled;
       toggleMute.classList.toggle('muted', isMuted);
       toggleMute.textContent = isMuted ? '🔇' : '🎤';
-      localMuted.classList.toggle('active', isMuted);
+      localMuted.classList.toggle('active', !audioTrack.enabled);
 
       // Send mute state to all peers
       broadcastData({ type: 'mute', muted: isMuted });
@@ -679,7 +679,7 @@ toggleCamera.onclick = () => {
       isCameraOff = !videoTrack.enabled;
       toggleCamera.classList.toggle('camera-off', isCameraOff);
       toggleCamera.textContent = isCameraOff ? '📷' : '📹';
-      localCameraOff.classList.toggle('active', isCameraOff);
+      localCameraOff.classList.toggle('active', !videoTrack.enabled);
 
       // Send camera state to all peers
       broadcastData({ type: 'camera', enabled: videoTrack.enabled });
