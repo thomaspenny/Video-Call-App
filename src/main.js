@@ -922,6 +922,12 @@ webcamButton.onclick = async () => {
     audioSelect.value = currentAudioDevice;
   }
 
+  // Ensure indicators are hidden initially (camera and audio are enabled by default)
+  localMuted.classList.remove('active');
+  localCameraOff.classList.remove('active');
+  isMuted = false;
+  isCameraOff = false;
+
   callButton.disabled = false;
   answerButton.disabled = false;
   webcamButton.disabled = true;
