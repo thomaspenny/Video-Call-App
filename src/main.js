@@ -956,7 +956,7 @@ webcamButton.onclick = async () => {
   console.log('Audio track enabled:', audioTrack?.enabled);
 
   callButton.disabled = false;
-  // answerButton is always enabled - validation happens on click
+  answerButton.disabled = false;
   webcamButton.disabled = true;
   hangupButton.disabled = false;
   settingsButton.disabled = false;
