@@ -663,6 +663,9 @@ toggleMute.onclick = () => {
       toggleMute.classList.toggle('muted', isMuted);
       toggleMute.textContent = isMuted ? '🔇' : '🎤';
       localMuted.classList.toggle('active', !audioTrack.enabled);
+      
+      console.log('Mute toggled - audioTrack.enabled:', audioTrack.enabled, 'isMuted:', isMuted);
+      console.log('localMuted classes:', localMuted.className);
 
       // Send mute state to all peers
       broadcastData({ type: 'mute', muted: isMuted });
@@ -680,6 +683,9 @@ toggleCamera.onclick = () => {
       toggleCamera.classList.toggle('camera-off', isCameraOff);
       toggleCamera.textContent = isCameraOff ? '📷' : '📹';
       localCameraOff.classList.toggle('active', !videoTrack.enabled);
+      
+      console.log('Camera toggled - videoTrack.enabled:', videoTrack.enabled, 'isCameraOff:', isCameraOff);
+      console.log('localCameraOff classes:', localCameraOff.className);
 
       // Send camera state to all peers
       broadcastData({ type: 'camera', enabled: videoTrack.enabled });
@@ -927,6 +933,12 @@ webcamButton.onclick = async () => {
   localCameraOff.classList.remove('active');
   isMuted = false;
   isCameraOff = false;
+  
+  console.log('Initial state - isMuted:', isMuted, 'isCameraOff:', isCameraOff);
+  console.log('localMuted classes:', localMuted.className);
+  console.log('localCameraOff classes:', localCameraOff.className);
+  console.log('Video track enabled:', videoTrack?.enabled);
+  console.log('Audio track enabled:', audioTrack?.enabled);
 
   callButton.disabled = false;
   answerButton.disabled = false;
