@@ -224,6 +224,11 @@ button:focus-visible {
   left: 20px;
   font-size: 1rem;
   padding: 0.5rem 1rem;
+  display: none;
+}
+
+.video-name-tag.remote.active {
+  display: block;
 }
 
 /* Remote video - fills entire screen */

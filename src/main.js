@@ -96,7 +96,7 @@ let callStartTime = null;
 let timerInterval = null;
 let statsInterval = null;
 let showStats = false;
-let username = 'Guest';
+let username = '';
 
 // Device selection
 let currentVideoDevice = null;
@@ -285,6 +285,7 @@ async function enterCall(callId, isCreator = false) {
           focusedPeerId = pid;
           remoteVideo.srcObject = peers[pid].remoteStream;
           remoteNameTag.textContent = peers[pid].username || 'Guest';
+          remoteNameTag.classList.add('active');
              updateFocusedSlotUI();
         }
       } else if (change.type === 'removed') {
@@ -573,20 +574,29 @@ showStatsToggle.onchange = () => {
   }
 };
 
-// Load username from localStorage
-if (localStorage.getItem('username')) {
-  username = localStorage.getItem('username');
-  usernameInput.value = username;
-  localNameTag.textContent = username;
-}
+// Always prompt for username on page load (don't remember from previous sessions)
+setTimeout(() => {
+  const name = prompt('Please enter your name:');
+  if (name && name.trim()) {
+    username = name.trim();
+    usernameInput.value = username;
+    localNameTag.textContent = username;
+  } else {
+    // Keep prompting until they enter a name
+    alert('A name is required to use the video call app');
+    location.reload();
+  }
+}, 500);
 
 usernameInput.oninput = () => {
-  username = usernameInput.value.trim() || 'Guest';
-  localStorage.setItem('username', username);
-  localNameTag.textContent = username;
-  // update our participant record and broadcast to peers
-  updateMyParticipantRecord();
-  broadcastData({ type: 'username', username });
+  const newName = usernameInput.value.trim();
+  if (newName) {
+    username = newName;
+    localNameTag.textContent = username;
+    // update our participant record and broadcast to peers
+    updateMyParticipantRecord();
+    broadcastData({ type: 'username', username });
+  }
 };
 
 closeCreateCall.onclick = () => {
@@ -889,10 +899,16 @@ topThumbnails?.addEventListener('click', (e) => {
     const idx = parseInt(slot.dataset.index);
     if (idx === 0) {
       focusedPeerId = null;
+      remoteNameTag.classList.remove('active');
     } else {
       // find peer id that owns this slot
       const found = Object.entries(peers).find(([id, p]) => p.slotIndex === idx);
       focusedPeerId = found ? found[0] : null;
+      if (focusedPeerId) {
+        remoteNameTag.classList.add('active');
+      } else {
+        remoteNameTag.classList.remove('active');
+      }
     }
 
     // Show the selected stream in the main area
@@ -974,8 +990,13 @@ webcamButton.onclick = async () => {
 
 // 2. Create an offer
 callButton.onclick = async () => {
+  if (!username || !username.trim()) {
+    alert('Please enter your name in Settings before creating a call');
+    settingsModal.classList.add('active');
+    return;
+  }
   if (!localStream) {
-    alert('Please start your webcam first');
+    alert('Please turn on your webcam before creating a call.\n\nClick "Start Webcam" to enable your camera and microphone.');
     return;
   }
   // Generate short call ID (10 characters)
@@ -991,8 +1012,14 @@ callButton.onclick = async () => {
 
 // 3. Answer the call with the unique ID
 confirmJoinCall.onclick = async () => {
+  if (!username || !username.trim()) {
+    alert('Please enter your name in Settings before joining a call');
+    joinCallModal.classList.remove('active');
+    settingsModal.classList.add('active');
+    return;
+  }
   if (!localStream) {
-    alert('Please start your webcam first before joining a call');
+    alert('Please turn on your webcam before joining a call.\n\nClick "Start Webcam" to enable your camera and microphone.');
     joinCallModal.classList.remove('active');
     return;
   }
