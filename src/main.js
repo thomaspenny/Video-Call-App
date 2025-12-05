@@ -687,6 +687,51 @@ toggleChat.onclick = () => {
   chatPanel.classList.remove('open');
 };
 
+// Chat message functions
+function addMessage(message, type, senderName = 'Guest') {
+  const messageEl = document.createElement('div');
+  messageEl.className = `message ${type}`;
+  
+  const senderEl = document.createElement('div');
+  senderEl.className = 'message-sender';
+  senderEl.textContent = senderName;
+  
+  const textEl = document.createElement('div');
+  textEl.textContent = message;
+  
+  const timeEl = document.createElement('span');
+  timeEl.className = 'message-time';
+  const now = new Date();
+  timeEl.textContent = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  
+  messageEl.appendChild(senderEl);
+  messageEl.appendChild(textEl);
+  messageEl.appendChild(timeEl);
+  
+  chatMessages.appendChild(messageEl);
+  chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+function sendChatMessage() {
+  const message = chatInput.value.trim();
+  if (!message) return;
+  
+  // Add to own chat
+  addMessage(message, 'sent', username);
+  
+  // Send to all peers via data channel
+  broadcastData({ type: 'chat', message, username });
+  
+  chatInput.value = '';
+}
+
+// Allow Enter key to send messages
+chatInput.addEventListener('keypress', (e) => {
+  if (e.key === 'Enter') {
+    sendChatMessage();
+  }
+});
+
 sendMessage.onclick = () => {
   sendChatMessage();
 };
