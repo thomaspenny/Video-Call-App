@@ -909,7 +909,14 @@ webcamButton.onclick = async () => {
   console.log('Webcam button clicked');
   try {
     console.log('Requesting media devices...');
-    localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+    localStream = await navigator.mediaDevices.getUserMedia({ 
+      video: { 
+        width: { ideal: 1920, min: 640 },
+        height: { ideal: 1080, min: 480 },
+        aspectRatio: { ideal: 16/9 }
+      }, 
+      audio: true 
+    });
     console.log('Media devices granted:', localStream);
   } catch (error) {
     console.error('Error accessing media devices:', error);
