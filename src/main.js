@@ -284,6 +284,7 @@ async function enterCall(callId, isCreator = false) {
           if (!focusedPeerId) {
           focusedPeerId = pid;
           remoteVideo.srcObject = peers[pid].remoteStream;
+          remoteVideo.muted = false; // Unmute when viewing remote participant
           remoteNameTag.textContent = peers[pid].username || 'Guest';
           remoteNameTag.classList.add('active');
              updateFocusedSlotUI();
@@ -320,6 +321,19 @@ async function enterCall(callId, isCreator = false) {
         const pc = await createPeerConnection(from, false);
         const offerDesc = { type: 'offer', sdp: data.sdp };
         await pc.setRemoteDescription(new RTCSessionDescription(offerDesc));
+        
+        // Process any pending ICE candidates
+        if (peers[from].pendingIceCandidates) {
+          for (const candidate of peers[from].pendingIceCandidates) {
+            try {
+              await pc.addIceCandidate(new RTCIceCandidate(candidate));
+            } catch (err) {
+              console.warn('Failed to add pending ICE candidate', err);
+            }
+          }
+          peers[from].pendingIceCandidates = [];
+        }
+        
         const answer = await pc.createAnswer();
         await pc.setLocalDescription(answer);
         await sendSignal({ type: 'answer', from: clientId, to: from, sdp: answer.sdp });
@@ -330,6 +344,18 @@ async function enterCall(callId, isCreator = false) {
           try {
             const answerDesc = { type: 'answer', sdp: data.sdp };
             await pc.setRemoteDescription(new RTCSessionDescription(answerDesc));
+            
+            // Process any pending ICE candidates
+            if (peers[from].pendingIceCandidates) {
+              for (const candidate of peers[from].pendingIceCandidates) {
+                try {
+                  await pc.addIceCandidate(new RTCIceCandidate(candidate));
+                } catch (err) {
+                  console.warn('Failed to add pending ICE candidate', err);
+                }
+              }
+              peers[from].pendingIceCandidates = [];
+            }
           } catch (err) {
             console.error('Failed to set remote description:', err);
           }
@@ -340,7 +366,17 @@ async function enterCall(callId, isCreator = false) {
         const pc = peers[from] && peers[from].pc;
         if (pc && data.candidate) {
           try {
-            await pc.addIceCandidate(new RTCIceCandidate(data.candidate));
+            // If remote description is set, add candidate immediately
+            if (pc.remoteDescription) {
+              await pc.addIceCandidate(new RTCIceCandidate(data.candidate));
+            } else {
+              // Queue candidate for later if remote description not set yet
+              if (!peers[from].pendingIceCandidates) {
+                peers[from].pendingIceCandidates = [];
+              }
+              peers[from].pendingIceCandidates.push(data.candidate);
+              console.log('Queued ICE candidate from', from, '- remote description not set yet');
+            }
           } catch (err) {
             console.warn('Failed to add remote ICE candidate', err);
           }
@@ -395,6 +431,7 @@ async function createPeerConnection(peerId, isInitiator = false) {
   peers[peerId] = peers[peerId] || {};
   peers[peerId].pc = pc;
   peers[peerId].remoteStream = remoteStream;
+  peers[peerId].pendingIceCandidates = []; // Queue for ICE candidates received before remote description
 
   // Attach remote stream to a slot video
   const vid = createOrGetVideoForPeer(peerId);
@@ -574,19 +611,7 @@ showStatsToggle.onchange = () => {
   }
 };
 
-// Always prompt for username on page load (don't remember from previous sessions)
-setTimeout(() => {
-  const name = prompt('Please enter your name:');
-  if (name && name.trim()) {
-    username = name.trim();
-    usernameInput.value = username;
-    localNameTag.textContent = username;
-  } else {
-    // Keep prompting until they enter a name
-    alert('A name is required to use the video call app');
-    location.reload();
-  }
-}, 500);
+// Name will be prompted when webcam is started
 
 usernameInput.oninput = () => {
   const newName = usernameInput.value.trim();
@@ -900,14 +925,17 @@ topThumbnails?.addEventListener('click', (e) => {
     if (idx === 0) {
       focusedPeerId = null;
       remoteNameTag.classList.remove('active');
+      remoteVideo.muted = true; // Mute when viewing own video
     } else {
       // find peer id that owns this slot
       const found = Object.entries(peers).find(([id, p]) => p.slotIndex === idx);
       focusedPeerId = found ? found[0] : null;
       if (focusedPeerId) {
         remoteNameTag.classList.add('active');
+        remoteVideo.muted = false; // Unmute when viewing remote participant
       } else {
         remoteNameTag.classList.remove('active');
+        remoteVideo.muted = true;
       }
     }
 
@@ -950,6 +978,7 @@ webcamButton.onclick = async () => {
   // show local preview in the local thumbnail and set main area to local (until someone else joins/focused)
   webcamVideo.srcObject = localStream;
   remoteVideo.srcObject = localStream;
+  remoteVideo.muted = true; // Mute local preview to prevent audio feedback
 
   // Get available devices
   await getDevices();
@@ -977,6 +1006,25 @@ webcamButton.onclick = async () => {
   console.log('localCameraOff classes:', localCameraOff.className);
   console.log('Video track enabled:', videoTrack?.enabled);
   console.log('Audio track enabled:', audioTrack?.enabled);
+
+  // Prompt for username if not set
+  if (!username || !username.trim()) {
+    const name = prompt('Please enter your name:');
+    if (name && name.trim()) {
+      username = name.trim();
+      usernameInput.value = username;
+      localNameTag.textContent = username;
+    } else {
+      // Keep prompting until they enter a name
+      alert('A name is required to use the video call app');
+      const retry = prompt('Please enter your name:');
+      if (retry && retry.trim()) {
+        username = retry.trim();
+        usernameInput.value = username;
+        localNameTag.textContent = username;
+      }
+    }
+  }
 
   callButton.disabled = false;
   answerButton.disabled = false;
