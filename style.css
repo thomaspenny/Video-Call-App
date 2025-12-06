@@ -617,8 +617,26 @@ button:focus-visible {
   background: royalblue;
 }
 
-.open-chat-btn.has-new {
-  animation: pulse 1s infinite;
+.chat-badge {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  background: crimson;
+  color: white;
+  border-radius: 50%;
+  min-width: 20px;
+  height: 20px;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.7rem;
+  font-weight: bold;
+  padding: 2px;
+  border: 2px solid black;
+}
+
+.chat-badge.active {
+  display: flex;
 }
 
 @keyframes pulse {

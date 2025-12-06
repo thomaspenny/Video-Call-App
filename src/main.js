@@ -88,6 +88,7 @@ const showStatsToggle = document.getElementById('showStatsToggle');
 const usernameInput = document.getElementById('usernameInput');
 const localNameTag = document.getElementById('localNameTag');
 const remoteNameTag = document.getElementById('remoteNameTag');
+const chatBadge = document.getElementById('chatBadge');
 
 // Call state
 let isMuted = false;
@@ -97,6 +98,7 @@ let timerInterval = null;
 let statsInterval = null;
 let showStats = false;
 let username = '';
+let unreadMessages = 0;
 
 // Device selection
 let currentVideoDevice = null;
@@ -681,6 +683,11 @@ joinCallModal.onclick = (e) => {
 openChat.onclick = () => {
   chatPanel.classList.add('open');
   openChat.classList.remove('has-new');
+  unreadMessages = 0;
+  chatBadge.textContent = '';
+  chatBadge.classList.remove('active');
+  // Auto-focus chat input
+  setTimeout(() => chatInput.focus(), 100);
 };
 
 toggleChat.onclick = () => {
@@ -936,7 +943,11 @@ function setupDataChannel(channel, peerId) {
     } else if (data.type === 'chat') {
       addMessage(data.message, 'received', data.username || (p && p.username) || 'Guest');
       // Show notification if chat is closed
-      if (!chatPanel.classList.contains('open')) openChat.classList.add('has-new');
+      if (!chatPanel.classList.contains('open')) {
+        unreadMessages++;
+        chatBadge.textContent = unreadMessages > 99 ? '99+' : unreadMessages;
+        chatBadge.classList.add('active');
+      }
     } else if (data.type === 'username') {
       if (p) p.username = data.username || 'Guest';
       if (slotEl) {
@@ -1054,21 +1065,23 @@ webcamButton.onclick = async () => {
 
   // Prompt for username if not set
   if (!username || !username.trim()) {
-    const name = prompt('Please enter your name:');
-    if (name && name.trim()) {
-      username = name.trim();
-      usernameInput.value = username;
-      localNameTag.textContent = username;
-    } else {
-      // Keep prompting until they enter a name
-      alert('A name is required to use the video call app');
-      const retry = prompt('Please enter your name:');
-      if (retry && retry.trim()) {
-        username = retry.trim();
+    setTimeout(() => {
+      const name = prompt('Please enter your name:');
+      if (name && name.trim()) {
+        username = name.trim();
         usernameInput.value = username;
         localNameTag.textContent = username;
+      } else {
+        // Keep prompting until they enter a name
+        alert('A name is required to use the video call app');
+        const retry = prompt('Please enter your name:');
+        if (retry && retry.trim()) {
+          username = retry.trim();
+          usernameInput.value = username;
+          localNameTag.textContent = username;
+        }
       }
-    }
+    }, 100);
   }
 
   callButton.disabled = false;
