@@ -385,7 +385,7 @@ async function enterCall(callId, isCreator = false) {
           } else if (data.type === 'left') {
             // remote left the call
             console.log('Peer left:', from);
-            cleanupPeer(from);
+            cleanupPeer(from, true); // Show notification
         }
       }
     });
@@ -489,9 +489,38 @@ async function createPeerConnection(peerId, isInitiator = false) {
   return pc;
 }
 
-function cleanupPeer(peerId) {
+function cleanupPeer(peerId, showNotification = false) {
   const p = peers[peerId];
   if (!p) return;
+  
+  // Show leaving notification if requested
+  if (showNotification && p.slotIndex) {
+    const el = document.getElementById(`slot-${p.slotIndex}`);
+    if (el) {
+      // Create leaving notification overlay
+      const notification = document.createElement('div');
+      notification.className = 'leaving-notification';
+      notification.innerHTML = `<div class="leaving-text">${p.username || 'Guest'} left the call</div>`;
+      el.appendChild(notification);
+      
+      // Remove after 3 seconds
+      setTimeout(() => {
+        notification.remove();
+        // Now cleanup the peer slot
+        performCleanup(peerId);
+      }, 3000);
+      return;
+    }
+  }
+  
+  // Immediate cleanup if no notification
+  performCleanup(peerId);
+}
+
+function performCleanup(peerId) {
+  const p = peers[peerId];
+  if (!p) return;
+  
   if (p.pc) {
     try { p.pc.close(); } catch(_){}
   }
@@ -1142,6 +1171,10 @@ confirmJoinCall.onclick = async () => {
 };
 
 hangupButton.onclick = async () => {
+  // Confirm before leaving
+  const confirmed = confirm('Are you sure you want to leave the call?');
+  if (!confirmed) return;
+  
   await leaveCall();
   hangupButton.disabled = true;
 };
