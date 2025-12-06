@@ -180,6 +180,15 @@ function createOrGetVideoForPeer(peerId) {
     slotEl.appendChild(vid);
   }
 
+  // Add loading spinner if not already present
+  if (!slotEl.querySelector('.loading-spinner')) {
+    const spinner = document.createElement('div');
+    spinner.className = 'loading-spinner';
+    spinner.id = `slot-${slotIndex}-spinner`;
+    spinner.innerHTML = '<div class="spinner"></div>';
+    slotEl.appendChild(spinner);
+  }
+
   // ensure name tag
   let nameTag = slotEl.querySelector('.slot-name');
   if (!nameTag) {
@@ -292,7 +301,41 @@ async function enterCall(callId, isCreator = false) {
              updateFocusedSlotUI();
         }
       } else if (change.type === 'removed') {
-        cleanupPeer(pid);
+        // Check if the leaving peer was focused
+        const wasFocused = (focusedPeerId === pid);
+        const leavingUsername = peers[pid]?.username || 'Guest';
+        
+        cleanupPeer(pid, true); // Always show notification in thumbnail
+        
+        // If they were focused, handle main video area
+        if (wasFocused) {
+          focusedPeerId = null;
+          
+          // Show message in main video area
+          remoteVideo.srcObject = null;
+          remoteNameTag.textContent = `${leavingUsername} left the call`;
+          remoteNameTag.classList.add('active');
+          
+          // After 2 seconds, switch to another participant or local video
+          setTimeout(() => {
+            // Find another peer to focus on
+            const otherPeers = Object.keys(peers);
+            if (otherPeers.length > 0) {
+              const nextPeer = otherPeers[0];
+              focusedPeerId = nextPeer;
+              remoteVideo.srcObject = peers[nextPeer].remoteStream;
+              remoteVideo.muted = false;
+              remoteNameTag.textContent = peers[nextPeer].username || 'Guest';
+              updateFocusedSlotUI();
+            } else {
+              // No other peers, show local video
+              remoteVideo.srcObject = localStream;
+              remoteVideo.muted = true;
+              remoteNameTag.textContent = username;
+              remoteNameTag.classList.remove('active');
+            }
+          }, 2000);
+        }
       } else if (change.type === 'modified') {
         // update username change
         if (peers[pid]) {
@@ -468,6 +511,13 @@ async function createPeerConnection(peerId, isInitiator = false) {
       // Fallback: add track directly if no streams
       remoteStream.addTrack(event.track);
     }
+    
+    // Remove loading spinner once we have a track
+    const p = peers[peerId];
+    if (p && p.slotIndex) {
+      const spinner = document.getElementById(`slot-${p.slotIndex}-spinner`);
+      if (spinner) spinner.remove();
+    }
   };
 
   // ICE candidate -> send to the specific peer
@@ -527,12 +577,19 @@ function performCleanup(peerId) {
   if (p.dataChannel) {
     try { p.dataChannel.close(); } catch(_){}
   }
+  if (p.remoteStream) {
+    try {
+      p.remoteStream.getTracks().forEach(track => track.stop());
+    } catch(_){}
+  }
   // clear remote video slot
   if (p.slotIndex) {
     const el = document.getElementById(`slot-${p.slotIndex}`);
     if (el) {
+      // Remove all child elements cleanly
       el.innerHTML = '';
       el.classList.add('empty');
+      el.classList.remove('active');
     }
   }
   delete peers[peerId];
