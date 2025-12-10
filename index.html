@@ -4,10 +4,14 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>WebRTC Demo</title>
-    <script type="module" crossorigin src="/Video-Call-App/assets/index-BvN73U-5.js"></script>
-    <link rel="stylesheet" crossorigin href="/Video-Call-App/assets/index-Dx_SZ-Sm.css">
+    <script type="module" crossorigin src="/Video-Call-App/assets/index-Ct9YVeBW.js"></script>
+    <link rel="stylesheet" crossorigin href="/Video-Call-App/assets/index-BTmcvrnE.css">
   </head>
   <body>
+    <div class="call-status-indicator" id="callStatusIndicator">
+      <div class="status-dot"></div>
+      <span class="status-text" id="callStatusText">Not in call</span>
+    </div>
     <div class="video-container" id="videoContainer">
       <div class="video-name-tag remote" id="remoteNameTag">Guest</div>
       <video id="remoteVideo" autoplay playsinline></video>
@@ -98,7 +102,10 @@
         <button id="callButton" disabled>Create Call</button>
         <button id="answerButton" disabled>Join Call</button>
       </div>
-      <button id="hangupButton" disabled>Hangup</button>
+      <div class="control-group">
+        <button id="endCallButton" disabled style="display: none;">End Call for Everyone</button>
+        <button id="hangupButton" disabled>Hangup</button>
+      </div>
     </div>
 
     <div id="settingsModal" class="modal">
@@ -141,17 +148,29 @@
 
     <div id="createCallModal" class="modal">
       <div class="modal-content">
-        <h3>Call Created</h3>
-        <p>Share this call ID with others:</p>
-        <div class="call-id-display">
-          <input id="callIdDisplay" readonly />
-          <button id="copyCallId">Copy</button>
+        <h3 id="createCallTitle">Create a Call</h3>
+        <div id="createCallPrompt">
+          <p>Enter a name for your call:</p>
+          <div class="setting-group">
+            <input id="callNameInput" placeholder="e.g., Team Meeting" maxlength="50" />
+          </div>
+          <div class="modal-buttons">
+            <button id="confirmCreateCall">Create Call</button>
+            <button id="cancelCreateCall">Cancel</button>
+          </div>
         </div>
-        <div class="share-buttons">
-          <button id="shareGmail">📧 Share via Gmail</button>
-          <button id="shareOutlook">📧 Share via Outlook</button>
+        <div id="createCallSuccess" style="display: none;">
+          <p>Share this call ID with others:</p>
+          <div class="call-id-display">
+            <input id="callIdDisplay" readonly />
+            <button id="copyCallId">Copy</button>
+          </div>
+          <div class="share-buttons">
+            <button id="shareGmail">📧 Share via Gmail</button>
+            <button id="shareOutlook">📧 Share via Outlook</button>
+          </div>
+          <button id="closeCreateCall">Close</button>
         </div>
-        <button id="closeCreateCall">Close</button>
       </div>
     </div>
 
