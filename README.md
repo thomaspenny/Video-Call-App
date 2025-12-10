@@ -4,7 +4,7 @@ A feature-rich, peer-to-peer video calling application built with WebRTC and Fir
 
 This is a work in progress, expect bugs...
 
-## 🌟 Features
+## Features
 
 ### Core Functionality
 - **Multi-party Video Calls**: Support for up to 10 participants in a single call
@@ -30,11 +30,11 @@ This is a work in progress, expect bugs...
 - **Responsive Design**: Works on desktop and mobile devices
 - **Dark Mode Interface**: Modern, eye-friendly design
 
-## 🚀 Live Demo
+## Live Demo
 
 Visit the live application: [https://thomaspenny.github.io/Video-Call-App/](https://thomaspenny.github.io/Video-Call-App/)
 
-## 🛠️ Technologies Used
+## Technologies Used
 
 - **WebRTC**: Real-time peer-to-peer communication
 - **Firebase Firestore**: Signaling server and participant management
@@ -42,13 +42,13 @@ Visit the live application: [https://thomaspenny.github.io/Video-Call-App/](http
 - **Vanilla JavaScript**: Lightweight, no framework dependencies
 - **CSS3**: Modern styling with flexbox and animations
 
-## 📋 Prerequisites
+## Prerequisites
 
 - Modern web browser with WebRTC support (Chrome, Firefox, Safari, Edge)
 - Camera and microphone permissions
 - Stable internet connection
 
-## 🔧 Installation & Setup
+## Installation & Setup
 
 ### Local Development
 
@@ -85,7 +85,7 @@ The optimized build will be created in the `dist/` directory.
 npm run deploy
 ```
 
-## 📖 How to Use
+## How to Use
 
 ### Starting a Call
 
@@ -111,14 +111,14 @@ npm run deploy
 - **Settings**: Access device settings to change camera/microphone
 - **End Call**: Click "Hangup" to leave the call
 
-## 🔐 Privacy & Security
+## Privacy & Security
 
 - All video and audio streams use encrypted peer-to-peer connections
 - Firebase is only used for signaling; media streams are never sent through servers
 - No call recordings or data storage
 - Participant data is automatically deleted when leaving calls
 
-## 🏗️ Project Structure
+## Project Structure
 
 ```
 Video-Call-App/
@@ -131,7 +131,7 @@ Video-Call-App/
 └── README.md           # Documentation
 ```
 
-## 🐛 Known Issues & Troubleshooting
+## Known Issues & Troubleshooting
 
 ### Camera/Microphone Not Working
 - Ensure browser permissions are granted
@@ -147,7 +147,7 @@ Video-Call-App/
 - Maximum of 10 participants supported
 - Ensure the call creator hasn't left (room remains active)
 
-## 🤝 Contributing
+## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
 
@@ -157,11 +157,11 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 4. Push to the branch (`git push origin feature/AmazingFeature`)
 5. Open a Pull Request
 
-## 📝 License
+## License
 
 This project is open source and available under the [MIT License](LICENSE).
 
-## 👤 Author
+## Author
 
 **Thomas Penny**
 - GitHub: [@thomaspenny](https://github.com/thomaspenny)
