@@ -924,6 +924,62 @@ button:focus-visible {
   flex: 1;
 }
 
+/* Call info and participants in manage call modal */
+.call-info-section {
+  margin-bottom: 1.5rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid rgba(100, 108, 255, 0.3);
+}
+
+.call-info-section p {
+  margin: 0.5rem 0;
+}
+
+.participants-section {
+  margin-top: 1rem;
+}
+
+.participants-section h4 {
+  margin: 0.5rem 0;
+  color: cornflowerblue;
+  font-size: 1rem;
+}
+
+.participants-list {
+  max-height: 200px;
+  overflow-y: auto;
+  margin: 0.75rem 0;
+  padding: 0.5rem;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 8px;
+  border: 1px solid rgba(100, 108, 255, 0.2);
+}
+
+.participant-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.6rem 0.75rem;
+  margin: 0.25rem 0;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 6px;
+  border-left: 3px solid cornflowerblue;
+}
+
+.participant-name {
+  font-weight: 500;
+  color: white;
+}
+
+.participant-badge {
+  background: linear-gradient(135deg, #646cff 0%, #535bf2 100%);
+  color: white;
+  padding: 0.2rem 0.6rem;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
 
 /* Input styles */
 input {

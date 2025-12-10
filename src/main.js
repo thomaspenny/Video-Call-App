@@ -98,6 +98,15 @@ const cancelCreateCall = document.getElementById('cancelCreateCall');
 const createCallPrompt = document.getElementById('createCallPrompt');
 const createCallSuccess = document.getElementById('createCallSuccess');
 const createCallTitle = document.getElementById('createCallTitle');
+const manageCallView = document.getElementById('manageCallView');
+const modalCallName = document.getElementById('modalCallName');
+const manageCallIdDisplay = document.getElementById('manageCallIdDisplay');
+const copyManageCallId = document.getElementById('copyManageCallId');
+const manageShareGmail = document.getElementById('manageShareGmail');
+const manageShareOutlook = document.getElementById('manageShareOutlook');
+const participantsList = document.getElementById('participantsList');
+const participantCount = document.getElementById('participantCount');
+const closeManageCall = document.getElementById('closeManageCall');
 
 // Call state
 let isMuted = false;
@@ -284,6 +293,10 @@ async function enterCall(callId, isCreator = false, callName = '') {
   // Update status indicator
   updateCallStatus();
   
+  // Update button text to "Manage Call"
+  callButton.textContent = 'Manage Call';
+  answerButton.disabled = true; // Can't join another call while in one
+  
   // Show end call button if creator
   if (isCreator) {
     endCallButton.style.display = 'inline-block';
@@ -341,6 +354,7 @@ async function enterCall(callId, isCreator = false, callName = '') {
         
         // Update call status with new participant count
         updateCallStatus();
+        updateParticipantsList(); // Update manage call modal if open
       } else if (change.type === 'removed') {
         // Check if the leaving peer was focused
         const wasFocused = (focusedPeerId === pid);
@@ -380,6 +394,7 @@ async function enterCall(callId, isCreator = false, callName = '') {
         
         // Update call status when participant leaves
         updateCallStatus();
+        updateParticipantsList(); // Update manage call modal if open
       } else if (change.type === 'modified') {
         // update username change
         if (peers[pid]) {
@@ -389,6 +404,7 @@ async function enterCall(callId, isCreator = false, callName = '') {
             const n = slot.querySelector('.slot-name');
             if (n) n.textContent = peers[pid].username;
           }
+          updateParticipantsList(); // Update manage call modal if open
         }
       }
     });
@@ -516,8 +532,13 @@ async function leaveCall() {
   stopStatsMonitoring();
   openChat.classList.remove('active');
   updateCallStatus();
+  
+  // Reset buttons
+  callButton.textContent = 'Create Call';
+  answerButton.disabled = false;
   endCallButton.style.display = 'none';
   endCallButton.disabled = true;
+  hangupButton.disabled = true;
 }
 
 async function createPeerConnection(peerId, isInitiator = false) {
@@ -801,6 +822,10 @@ async function handleCallEnded(callName) {
   stopStatsMonitoring();
   openChat.classList.remove('active');
   updateCallStatus();
+  
+  // Reset buttons
+  callButton.textContent = 'Create Call';
+  answerButton.disabled = false;
   endCallButton.style.display = 'none';
   endCallButton.disabled = true;
   hangupButton.disabled = true;
@@ -851,6 +876,62 @@ async function endCallForEveryone() {
   }
 }
 
+// Update participants list in manage call modal
+function updateParticipantsList() {
+  if (!participantsList) return;
+  
+  participantsList.innerHTML = '';
+  
+  // Add yourself first
+  const selfEl = document.createElement('div');
+  selfEl.className = 'participant-item';
+  selfEl.innerHTML = `
+    <span class="participant-name">${username} (You)</span>
+    ${isCallCreator ? '<span class="participant-badge">Host</span>' : ''}
+  `;
+  participantsList.appendChild(selfEl);
+  
+  // Add other participants
+  Object.entries(peers).forEach(([peerId, peer]) => {
+    const participantEl = document.createElement('div');
+    participantEl.className = 'participant-item';
+    participantEl.innerHTML = `
+      <span class="participant-name">${peer.username || 'Guest'}</span>
+    `;
+    participantsList.appendChild(participantEl);
+  });
+  
+  // Update count
+  const totalParticipants = Object.keys(peers).length + 1;
+  if (participantCount) {
+    participantCount.textContent = totalParticipants;
+  }
+}
+
+// Show manage call modal
+function showManageCallModal() {
+  if (!currentCallRef || !currentCallId) {
+    alert('You are not currently in a call.');
+    return;
+  }
+  
+  // Hide create/success views, show manage view
+  createCallPrompt.style.display = 'none';
+  createCallSuccess.style.display = 'none';
+  manageCallView.style.display = 'block';
+  createCallTitle.textContent = 'Manage Call';
+  
+  // Populate call info
+  modalCallName.textContent = currentCallName || 'Unnamed Call';
+  manageCallIdDisplay.value = currentCallId;
+  
+  // Update participants list
+  updateParticipantsList();
+  
+  // Show modal
+  createCallModal.classList.add('active');
+}
+
 // Name will be prompted when webcam is started
 
 usernameInput.oninput = () => {
@@ -898,6 +979,10 @@ cancelCreateCall.onclick = () => {
   callNameInput.value = '';
 };
 
+closeManageCall.onclick = () => {
+  createCallModal.classList.remove('active');
+};
+
 createCallModal.onclick = (e) => {
   if (e.target === createCallModal) {
     createCallModal.classList.remove('active');
@@ -930,6 +1015,36 @@ shareOutlook.onclick = () => {
   const baseUrl = window.location.origin + window.location.pathname;
   const subject = encodeURIComponent('Join my video call');
   const body = encodeURIComponent(`Hi,\n\nJoin my video call!\n\nWebsite: ${baseUrl}\nCall ID: ${callId}\n\nClick "Join Call" and enter the Call ID above.\n\nSee you soon!`);
+  window.open(`https://outlook.office.com/mail/deeplink/compose?subject=${subject}&body=${body}`, '_blank');
+};
+
+// Manage call modal handlers
+copyManageCallId.onclick = async () => {
+  try {
+    await navigator.clipboard.writeText(manageCallIdDisplay.value);
+    const originalText = copyManageCallId.textContent;
+    copyManageCallId.textContent = 'Copied!';
+    setTimeout(() => {
+      copyManageCallId.textContent = originalText;
+    }, 2000);
+  } catch (err) {
+    console.error('Failed to copy:', err);
+  }
+};
+
+manageShareGmail.onclick = () => {
+  const callId = manageCallIdDisplay.value;
+  const baseUrl = window.location.origin + window.location.pathname;
+  const subject = encodeURIComponent(`Join my video call: ${currentCallName}`);
+  const body = encodeURIComponent(`Hi,\n\nJoin my video call "${currentCallName}"!\n\nWebsite: ${baseUrl}\nCall ID: ${callId}\n\nClick "Join Call" and enter the Call ID above.\n\nSee you soon!`);
+  window.open(`https://mail.google.com/mail/?view=cm&fs=1&su=${subject}&body=${body}`, '_blank');
+};
+
+manageShareOutlook.onclick = () => {
+  const callId = manageCallIdDisplay.value;
+  const baseUrl = window.location.origin + window.location.pathname;
+  const subject = encodeURIComponent(`Join my video call: ${currentCallName}`);
+  const body = encodeURIComponent(`Hi,\n\nJoin my video call "${currentCallName}"!\n\nWebsite: ${baseUrl}\nCall ID: ${callId}\n\nClick "Join Call" and enter the Call ID above.\n\nSee you soon!`);
   window.open(`https://outlook.office.com/mail/deeplink/compose?subject=${subject}&body=${body}`, '_blank');
 };
 
@@ -1012,9 +1127,16 @@ sendMessage.onclick = () => {
 };
 
 callButton.onclick = async () => {
-  // Show the create call modal with prompt
+  // If already in a call, show manage call modal
+  if (currentCallRef && currentCallId) {
+    showManageCallModal();
+    return;
+  }
+  
+  // Otherwise, show the create call modal with prompt
   createCallPrompt.style.display = 'block';
   createCallSuccess.style.display = 'none';
+  manageCallView.style.display = 'none';
   createCallTitle.textContent = 'Create a Call';
   createCallModal.classList.add('active');
   // Auto-focus the call name input
