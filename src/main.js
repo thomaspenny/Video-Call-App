@@ -548,6 +548,11 @@ async function leaveCall() {
   endCallButton.style.display = 'none';
   endCallButton.disabled = true;
   hangupButton.disabled = true;
+  
+  // Hard refresh the page to reset state
+  setTimeout(() => {
+    window.location.reload();
+  }, 100);
 }
 
 async function createPeerConnection(peerId, isInitiator = false) {
@@ -787,7 +792,7 @@ showStatsToggle.onchange = () => {
 function updateCallStatus() {
   if (currentCallRef && currentCallId) {
     const participantCount = Object.keys(peers).length + 1; // +1 for self
-    callStatusText.textContent = `In call: ${currentCallName || currentCallId} (${participantCount} participant${participantCount > 1 ? 's' : ''})`;
+    callStatusText.textContent = 'In call';
     callStatusIndicator.classList.add('active');
   } else {
     callStatusText.textContent = 'Not in call';
@@ -843,12 +848,17 @@ async function handleCallEnded(callName) {
   endCallButton.disabled = true;
   hangupButton.disabled = true;
   
-  // After 3 seconds, return to local video
+  // After 3 seconds, show message then refresh
   setTimeout(() => {
     remoteVideo.srcObject = localStream;
     remoteVideo.muted = true;
     remoteNameTag.textContent = username;
     remoteNameTag.classList.remove('active');
+    
+    // Hard refresh after showing the message
+    setTimeout(() => {
+      window.location.reload();
+    }, 2000);
   }, 3000);
 }
 
