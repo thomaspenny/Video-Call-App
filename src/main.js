@@ -107,6 +107,7 @@ const manageShareOutlook = document.getElementById('manageShareOutlook');
 const participantsList = document.getElementById('participantsList');
 const participantCount = document.getElementById('participantCount');
 const closeManageCall = document.getElementById('closeManageCall');
+const manageCallButton = document.getElementById('manageCallButton');
 
 // Call state
 let isMuted = false;
@@ -293,9 +294,13 @@ async function enterCall(callId, isCreator = false, callName = '') {
   // Update status indicator
   updateCallStatus();
   
-  // Update button text to "Manage Call"
-  callButton.textContent = 'Manage Call';
-  answerButton.disabled = true; // Can't join another call while in one
+  // Hide Create Call, show Manage Call, disable Join Call
+  callButton.disabled = true;
+  callButton.style.opacity = '0.5';
+  manageCallButton.disabled = false;
+  manageCallButton.style.display = 'inline-block';
+  answerButton.disabled = true;
+  answerButton.style.opacity = '0.5';
   
   // Show end call button if creator
   if (isCreator) {
@@ -534,8 +539,12 @@ async function leaveCall() {
   updateCallStatus();
   
   // Reset buttons
-  callButton.textContent = 'Create Call';
+  callButton.disabled = false;
+  callButton.style.opacity = '1';
+  manageCallButton.disabled = true;
+  manageCallButton.style.display = 'none';
   answerButton.disabled = false;
+  answerButton.style.opacity = '1';
   endCallButton.style.display = 'none';
   endCallButton.disabled = true;
   hangupButton.disabled = true;
@@ -824,8 +833,12 @@ async function handleCallEnded(callName) {
   updateCallStatus();
   
   // Reset buttons
-  callButton.textContent = 'Create Call';
+  callButton.disabled = false;
+  callButton.style.opacity = '1';
+  manageCallButton.disabled = true;
+  manageCallButton.style.display = 'none';
   answerButton.disabled = false;
+  answerButton.style.opacity = '1';
   endCallButton.style.display = 'none';
   endCallButton.disabled = true;
   hangupButton.disabled = true;
@@ -1127,13 +1140,7 @@ sendMessage.onclick = () => {
 };
 
 callButton.onclick = async () => {
-  // If already in a call, show manage call modal
-  if (currentCallRef && currentCallId) {
-    showManageCallModal();
-    return;
-  }
-  
-  // Otherwise, show the create call modal with prompt
+  // Show the create call modal with prompt
   createCallPrompt.style.display = 'block';
   createCallSuccess.style.display = 'none';
   manageCallView.style.display = 'none';
@@ -1142,6 +1149,11 @@ callButton.onclick = async () => {
   // Auto-focus the call name input
   setTimeout(() => callNameInput.focus(), 100);
 };
+
+manageCallButton.onclick = () => {
+  showManageCallModal();
+};
+
 // Mute/Unmute microphone
 toggleMute.onclick = () => {
   if (localStream) {
