@@ -36,6 +36,55 @@ body {
   flex-direction: column;
 }
 
+/* Call status indicator */
+.call-status-indicator {
+  position: fixed;
+  top: 20px;
+  left: 20px;
+  background: rgba(0, 0, 0, 0.75);
+  color: white;
+  padding: 10px 16px;
+  border-radius: 20px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  z-index: 1000;
+  font-size: 0.9rem;
+  opacity: 0.6;
+  transition: opacity 0.3s ease;
+}
+
+.call-status-indicator:hover {
+  opacity: 1;
+}
+
+.call-status-indicator.active {
+  background: rgba(40, 167, 69, 0.9);
+  opacity: 1;
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.5);
+}
+
+.call-status-indicator.active .status-dot {
+  background: white;
+  animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.status-text {
+  white-space: nowrap;
+  font-weight: 500;
+}
+
 h1 {
   font-size: 3.2em;
   line-height: 1.1;
@@ -736,6 +785,24 @@ button:focus-visible {
   gap: 2rem;
   flex-wrap: wrap;
   align-items: center;
+}
+
+/* End call button - distinct red styling for host */
+#endCallButton {
+  background: linear-gradient(135deg, #d32f2f 0%, #c62828 100%);
+  color: white;
+  font-weight: 600;
+  border: 2px solid #b71c1c;
+}
+
+#endCallButton:hover:not(:disabled) {
+  background: linear-gradient(135deg, #b71c1c 0%, #a21919 100%);
+  border-color: #8b0000;
+}
+
+#endCallButton:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 /* Modal */

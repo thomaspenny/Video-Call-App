@@ -89,6 +89,15 @@ const usernameInput = document.getElementById('usernameInput');
 const localNameTag = document.getElementById('localNameTag');
 const remoteNameTag = document.getElementById('remoteNameTag');
 const chatBadge = document.getElementById('chatBadge');
+const callStatusIndicator = document.getElementById('callStatusIndicator');
+const callStatusText = document.getElementById('callStatusText');
+const endCallButton = document.getElementById('endCallButton');
+const callNameInput = document.getElementById('callNameInput');
+const confirmCreateCall = document.getElementById('confirmCreateCall');
+const cancelCreateCall = document.getElementById('cancelCreateCall');
+const createCallPrompt = document.getElementById('createCallPrompt');
+const createCallSuccess = document.getElementById('createCallSuccess');
+const createCallTitle = document.getElementById('createCallTitle');
 
 // Call state
 let isMuted = false;
@@ -99,6 +108,9 @@ let statsInterval = null;
 let showStats = false;
 let username = '';
 let unreadMessages = 0;
+let isCallCreator = false;
+let currentCallId = null;
+let currentCallName = '';
 
 // Device selection
 let currentVideoDevice = null;
@@ -240,16 +252,42 @@ async function updateMyParticipantRecord() {
   }
 }
 
-async function enterCall(callId, isCreator = false) {
+async function enterCall(callId, isCreator = false, callName = '') {
   currentCallRef = doc(db, 'calls', callId);
+  currentCallId = callId;
+  currentCallName = callName;
+  isCallCreator = isCreator;
 
-  // if creator, ensure the call doc exists
+  // if creator, ensure the call doc exists with the call name
   if (isCreator) {
     try {
-      await setDoc(currentCallRef, { createdAt: serverTimestamp() });
+      await setDoc(currentCallRef, { 
+        createdAt: serverTimestamp(),
+        callName: callName,
+        creatorId: clientId
+      });
     } catch (err) {
       console.error('Error creating call doc:', err);
     }
+  } else {
+    // Load call name for joiners
+    try {
+      const callDoc = await getDoc(currentCallRef);
+      if (callDoc.exists()) {
+        currentCallName = callDoc.data().callName || 'Unnamed Call';
+      }
+    } catch (err) {
+      console.error('Error loading call data:', err);
+    }
+  }
+
+  // Update status indicator
+  updateCallStatus();
+  
+  // Show end call button if creator
+  if (isCreator) {
+    endCallButton.style.display = 'inline-block';
+    endCallButton.disabled = false;
   }
 
   // add this client to participants
@@ -300,6 +338,9 @@ async function enterCall(callId, isCreator = false) {
           remoteNameTag.classList.add('active');
              updateFocusedSlotUI();
         }
+        
+        // Update call status with new participant count
+        updateCallStatus();
       } else if (change.type === 'removed') {
         // Check if the leaving peer was focused
         const wasFocused = (focusedPeerId === pid);
@@ -336,6 +377,9 @@ async function enterCall(callId, isCreator = false) {
             }
           }, 2000);
         }
+        
+        // Update call status when participant leaves
+        updateCallStatus();
       } else if (change.type === 'modified') {
         // update username change
         if (peers[pid]) {
@@ -429,6 +473,10 @@ async function enterCall(callId, isCreator = false) {
             // remote left the call
             console.log('Peer left:', from);
             cleanupPeer(from, true); // Show notification
+          } else if (data.type === 'call-ended') {
+            // Host ended the call for everyone
+            console.log('Call ended by host');
+            handleCallEnded(data.callName || 'The call');
         }
       }
     });
@@ -461,9 +509,15 @@ async function leaveCall() {
   Object.keys(peers).forEach(pid => cleanupPeer(pid));
 
   currentCallRef = null;
+  currentCallId = null;
+  currentCallName = '';
+  isCallCreator = false;
   stopCallTimer();
   stopStatsMonitoring();
   openChat.classList.remove('active');
+  updateCallStatus();
+  endCallButton.style.display = 'none';
+  endCallButton.disabled = true;
 }
 
 async function createPeerConnection(peerId, isInitiator = false) {
@@ -699,6 +753,104 @@ showStatsToggle.onchange = () => {
   }
 };
 
+// Update call status indicator
+function updateCallStatus() {
+  if (currentCallRef && currentCallId) {
+    const participantCount = Object.keys(peers).length + 1; // +1 for self
+    callStatusText.textContent = `In call: ${currentCallName || currentCallId} (${participantCount} participant${participantCount > 1 ? 's' : ''})`;
+    callStatusIndicator.classList.add('active');
+  } else {
+    callStatusText.textContent = 'Not in call';
+    callStatusIndicator.classList.remove('active');
+  }
+}
+
+// Handle call ended by host
+async function handleCallEnded(callName) {
+  // Show message
+  remoteVideo.srcObject = null;
+  remoteNameTag.textContent = `${callName} was ended by the host`;
+  remoteNameTag.classList.add('active');
+  
+  // Clean up all peers without notification (call already ended)
+  if (participantsUnsub) participantsUnsub();
+  if (signalsUnsub) signalsUnsub();
+  
+  Object.keys(peers).forEach(pid => {
+    const p = peers[pid];
+    if (p.pc) try { p.pc.close(); } catch(_){}
+    if (p.dataChannel) try { p.dataChannel.close(); } catch(_){}
+    if (p.remoteStream) try { p.remoteStream.getTracks().forEach(t => t.stop()); } catch(_){}
+    if (p.slotIndex) {
+      const el = document.getElementById(`slot-${p.slotIndex}`);
+      if (el) {
+        el.innerHTML = '';
+        el.classList.add('empty');
+        el.classList.remove('active');
+      }
+    }
+    delete peers[pid];
+  });
+  
+  currentCallRef = null;
+  currentCallId = null;
+  currentCallName = '';
+  isCallCreator = false;
+  focusedPeerId = null;
+  stopCallTimer();
+  stopStatsMonitoring();
+  openChat.classList.remove('active');
+  updateCallStatus();
+  endCallButton.style.display = 'none';
+  endCallButton.disabled = true;
+  hangupButton.disabled = true;
+  
+  // After 3 seconds, return to local video
+  setTimeout(() => {
+    remoteVideo.srcObject = localStream;
+    remoteVideo.muted = true;
+    remoteNameTag.textContent = username;
+    remoteNameTag.classList.remove('active');
+  }, 3000);
+}
+
+// End call for everyone (host only)
+async function endCallForEveryone() {
+  if (!isCallCreator || !currentCallRef) {
+    alert('Only the call creator can end the call for everyone.');
+    return;
+  }
+  
+  const confirmed = confirm(`Are you sure you want to end "${currentCallName}" for everyone?`);
+  if (!confirmed) return;
+  
+  try {
+    // Send call-ended signal to all participants
+    await addDoc(collection(currentCallRef, 'signals'), { 
+      type: 'call-ended', 
+      from: clientId,
+      callName: currentCallName,
+      createdAt: serverTimestamp() 
+    });
+    
+    // Delete the call document to prevent new joins
+    await deleteDoc(currentCallRef);
+    
+    // Leave the call ourselves
+    await leaveCall();
+    
+    // Show local video
+    remoteVideo.srcObject = localStream;
+    remoteVideo.muted = true;
+    remoteNameTag.textContent = username;
+    remoteNameTag.classList.remove('active');
+    
+  } catch (err) {
+    console.error('Error ending call:', err);
+    alert('Failed to end the call. Please try again.');
+  }
+}
+
 // Name will be prompted when webcam is started
 
 usernameInput.oninput = () => {
@@ -714,6 +866,36 @@ usernameInput.oninput = () => {
 
 closeCreateCall.onclick = () => {
   createCallModal.classList.remove('active');
+  createCallPrompt.style.display = 'block';
+  createCallSuccess.style.display = 'none';
+  callNameInput.value = '';
+};
+
+confirmCreateCall.onclick = async () => {
+  const callName = callNameInput.value.trim();
+  if (!callName) {
+    alert('Please enter a call name');
+    callNameInput.focus();
+    return;
+  }
+  
+  // Create a short call id and enter the call as the creator
+  const shortId = Math.random().toString(36).substring(2, 12);
+  callIdDisplay.value = shortId;
+  
+  // Switch to success view
+  createCallPrompt.style.display = 'none';
+  createCallSuccess.style.display = 'block';
+  createCallTitle.textContent = 'Call Created';
+  
+  // Create the call doc and enter
+  await enterCall(shortId, true, callName);
+  hangupButton.disabled = false;
+};
+
+cancelCreateCall.onclick = () => {
+  createCallModal.classList.remove('active');
+  callNameInput.value = '';
 };
 
 createCallModal.onclick = (e) => {
@@ -830,16 +1012,13 @@ sendMessage.onclick = () => {
 };
 
 callButton.onclick = async () => {
-  // Create a short call id and enter the call as the creator
-  const shortId = Math.random().toString(36).substring(2, 12);
-  callIdDisplay.value = shortId;
+  // Show the create call modal with prompt
+  createCallPrompt.style.display = 'block';
+  createCallSuccess.style.display = 'none';
+  createCallTitle.textContent = 'Create a Call';
   createCallModal.classList.add('active');
-
-  // create the empty call doc and then enter
-  const callDoc = doc(db, 'calls', shortId);
-  await setDoc(callDoc, { createdAt: serverTimestamp() });
-  await enterCall(shortId, true);
-  hangupButton.disabled = false;
+  // Auto-focus the call name input
+  setTimeout(() => callNameInput.focus(), 100);
 };
 // Mute/Unmute microphone
 toggleMute.onclick = () => {
@@ -1234,4 +1413,12 @@ hangupButton.onclick = async () => {
   
   await leaveCall();
   hangupButton.disabled = true;
+};
+
+endCallButton.onclick = async () => {
+  await endCallForEveryone();;
+};
+
+endCallButton.onclick = async () => {
+  await endCallForEveryone();
 };
